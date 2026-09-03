@@ -66,8 +66,8 @@ This repository contains the official showcase website featuring:
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/<repo-name>.git
-cd <repo-name>
+git clone https://github.com/TejaPriyan/myself-tejapriyan.git
+cd myself-tejapriyan
 
 # Install dependencies
 npm install
