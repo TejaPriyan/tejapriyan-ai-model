@@ -66,8 +66,8 @@ This repository contains the official showcase website featuring:
 
 ```bash
 # Clone the repository
-git clone https://github.com/TejaPriyan/myself-tejapriyan.git
-cd myself-tejapriyan
+git clone https://github.com/TejaPriyan/tejapriyan-ai-model.git
+cd tejapriyan-ai-model
 
 # Install dependencies
 npm install
