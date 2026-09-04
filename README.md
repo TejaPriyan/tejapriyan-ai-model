@@ -7,10 +7,11 @@
 [![Hugging Face GGUF](https://img.shields.io/badge/HuggingFace-GGUF--Quant-blue.svg)](https://huggingface.co/teja161615/Tejapriyan-8B-GGUF)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Runtime: Ollama](https://img.shields.io/badge/Runtime-Ollama-purple.svg)](https://ollama.com)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FTejaPriyan%2Ftejapriyan-ai-model)
 
 ---
 
-## 🚀 Quick Start (One Command)
+## 🚀 Quick Start (Run Locally)
 
 Run **Tejapriyan-8B** directly offline on your machine with Ollama:
 
@@ -18,9 +19,31 @@ Run **Tejapriyan-8B** directly offline on your machine with Ollama:
 ollama run tejapriyan
 ```
 
+To let the website connect directly to your local Ollama instance without browser CORS blocking:
+```powershell
+$env:OLLAMA_ORIGINS="*" ; ollama serve
+```
+
 Prefer raw weights or GGUF quants?
 * **16-bit Safetensors**: [`teja161615/Tejapriyan-8B`](https://huggingface.co/teja161615/Tejapriyan-8B)
 * **Q4_K_M GGUF (4.7 GB)**: [`teja161615/Tejapriyan-8B-GGUF`](https://huggingface.co/teja161615/Tejapriyan-8B-GGUF)
+
+---
+
+## 🌐 Broadcast Your PC Model to the Entire World
+
+Want anyone visiting your website to chat with the model running on your home PC?
+
+Simply double-click the included script in the repository:
+```cmd
+share-live-model.bat
+```
+*(Or run `./share-live-model.ps1` in PowerShell)*
+
+This automatically starts a free, zero-config Cloudflare Tunnel to port 11434:
+1. Copy the public tunnel URL printed in your console (e.g. `https://xxxx.trycloudflare.com`).
+2. Open your website -> click **"Node Settings"** in the chat header -> paste the URL!
+3. *(Optional)* Add it to your Vercel project environment variables as `VITE_TEJAPRIYAN_API_URL` so all visitors worldwide connect to your PC by default!
 
 ---
 
@@ -43,9 +66,10 @@ This repository contains the official showcase website featuring:
   - 🎵 `Music Store` (artists, albums, tracks, genres)
   - 📚 `Public Library` (authors, books, members, active loans)
 - **Live Editable Query Box**: Edit any query, write custom SQL, and execute live against the database with `Ctrl + Enter`.
-- **In-Browser & Corner AI Chatbot**:
-  - Automatically queries your local Ollama instance (`http://localhost:11434`) when active.
-  - Maintains conversational context across question follow-ups.
+- **Multi-Tier AI Chatbot**:
+  - **Local Visitor GPU**: Streams directly from `http://localhost:11434` when the visitor runs Ollama locally.
+  - **Creator Live Host PC Node**: Streams directly from your PC to visitors across the world via secure tunnel.
+  - **Built-in Standalone Intelligence**: Instant client-side reasoning engine covering arithmetic, SQL queries, code explanations, and developer attribution with zero external API dependencies.
 - **Phase 7 Verified Benchmark Receipts**:
   - Tested on 26 held-out tasks against live SQLite databases:
     | Model | Held-Out Exec Accuracy (n=26) | Syntax Errors |
@@ -87,23 +111,13 @@ Creates an optimized, single-file production bundle in `dist/index.html`.
 
 ---
 
-## 🌐 Deploying the Website Live
+## 🚀 Deploying to Vercel (Instant & Free)
 
-You can deploy this website for free in under 60 seconds using any of the following platforms:
-
-### 1. Vercel (Recommended)
-1. Push this repository to GitHub.
-2. Go to [vercel.com](https://vercel.com) and click **"Add New Project"**.
-3. Select your GitHub repository.
-4. Click **Deploy** (Vercel automatically detects Vite and builds it instantly).
-
-### 2. Netlify
-1. Go to [netlify.com](https://netlify.com).
-2. Connect your GitHub repository (or drag-and-drop the `dist` folder directly onto Netlify Drop).
-
-### 3. GitHub Pages
-1. In repository settings, navigate to **Pages**.
-2. Select **GitHub Actions** as the source, and choose the Vite template.
+1. Push this repository to your GitHub account.
+2. Go to [vercel.com](https://vercel.com) and log in with GitHub.
+3. Click **"Add New Project"** and select **`tejapriyan-ai-model`**.
+4. *(Optional)* In Environment Variables, set `VITE_TEJAPRIYAN_API_URL` to your live Cloudflare tunnel URL if you want everyone to route to your PC model.
+5. Click **Deploy**! (Vercel deploys in ~30 seconds with a free `.vercel.app` domain).
 
 ---
 

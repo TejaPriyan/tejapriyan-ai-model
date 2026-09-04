@@ -577,5 +577,5 @@ export function getAssistantResponse(history: ChatMessage[], currentInput: strin
 - **Arithmetic**: You can ask any math calculation (e.g. \`88 plus 766565\`).
 - **SQL & Data**: Ask me to write database queries, joins, or table schemas.
 - **Code & Tech**: Ask about Python, Java, Docker, Git, or database indexing.
-- **Live AI**: Connect a free Groq API key in the chat settings to ask literally any general question in real time!`;
+- **Reasoning**: Ask general knowledge or conceptual questions!`;
 }

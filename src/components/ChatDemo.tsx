@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Radio, RotateCcw } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Cpu,
+  Globe,
+  HelpCircle,
+  Laptop,
+  Loader2,
+  Radio,
+  RotateCcw,
+  Settings,
+  Sparkles,
+  Wifi,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { LogoMark } from "./ui";
 import { cn } from "@/utils/cn";
+import { getAssistantResponse } from "@/utils/aiResponder";
 
 type Msg = { role: "user" | "bot"; text: string; done: boolean };
 
@@ -13,8 +30,10 @@ const SUGGESTIONS = [
   "How can I run you on my computer?",
 ];
 
+// Default fallback host from environment variable (Vercel)
+const DEFAULT_HOST = (import.meta.env.VITE_TEJAPRIYAN_API_URL as string | undefined) || "";
+
 function FormattedMessage({ text }: { text: string }) {
-  // Check if text has <think>...</think>
   const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/);
 
   if (thinkMatch) {
@@ -37,7 +56,6 @@ function FormattedMessage({ text }: { text: string }) {
 }
 
 function FormattedText({ content }: { content: string }) {
-  // Parse code blocks vs regular text
   const parts = content.split(/(```[\s\S]*?```)/g);
 
   return (
@@ -57,7 +75,6 @@ function FormattedText({ content }: { content: string }) {
           );
         }
 
-        // Render bold text
         const boldParts = part.split(/(\*\*.*?\*\*)/g);
         return (
           <span key={idx} className="whitespace-pre-wrap">
@@ -74,10 +91,6 @@ function FormattedText({ content }: { content: string }) {
   );
 }
 
-import { getAssistantResponse } from "@/utils/aiResponder";
-const LIVE_KEY = atob("Z3NrX0RubDB2VVhiUUhHeTNjanRRajF2V0dkeWIzRll0MnJVN1NuczR3MEVzNTNnZXZxQXZnTGR");
-const LIVE_MODEL = "qwen/qwen3.6-27b";
-
 export default function ChatDemo() {
   const [messages, setMessages] = useState<Msg[]>([
     {
@@ -88,31 +101,84 @@ export default function ChatDemo() {
   ]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [ollamaConnected, setOllamaConnected] = useState<boolean | null>(null);
+
+  // Active Connection Modes: 'local' (visitor's PC), 'remote' (Teja's live tunnel), 'builtin' (in-browser)
+  const [activeMode, setActiveMode] = useState<"local" | "remote" | "builtin">("builtin");
+  const [localAvailable, setLocalAvailable] = useState(false);
+  const [remoteAvailable, setRemoteAvailable] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  // Custom remote host URL (e.g. Cloudflare tunnel or ngrok)
+  const [hostUrl, setHostUrl] = useState(() => {
+    return localStorage.getItem("tejapriyan_host_url") || DEFAULT_HOST;
+  });
+  const [showSettings, setShowSettings] = useState(false);
+  const [copiedCors, setCopiedCors] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Check if local Ollama is accessible
-  useEffect(() => {
-    let active = true;
-    const checkOllama = async () => {
+  // Check health of local Ollama and remote host
+  const checkConnections = async () => {
+    setChecking(true);
+    let localOk = false;
+    let remoteOk = false;
+
+    // 1. Check Visitor's Local Ollama on http://localhost:11434
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch("http://localhost:11434/api/tags", {
+        method: "GET",
+        mode: "cors",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        localOk = true;
+      }
+    } catch {
+      localOk = false;
+    }
+
+    // 2. Check Remote Host PC (Teja's Cloudflare tunnel or public IP)
+    const targetRemote = hostUrl.trim().replace(/\/+$/, "");
+    if (targetRemote && targetRemote !== "http://localhost:11434") {
       try {
-        const res = await fetch("http://localhost:11434/api/tags", { method: "GET", mode: "cors" });
-        if (res.ok && active) {
-          setOllamaConnected(true);
-          return;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch(`${targetRemote}/api/tags`, {
+          method: "GET",
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          remoteOk = true;
         }
       } catch {
-        // Local Ollama not active
+        remoteOk = false;
       }
-      if (active) setOllamaConnected(false);
-    };
-    checkOllama();
-    return () => {
-      active = false;
-    };
-  }, []);
+    }
+
+    setLocalAvailable(localOk);
+    setRemoteAvailable(remoteOk);
+
+    if (localOk) {
+      setActiveMode("local");
+    } else if (remoteOk) {
+      setActiveMode("remote");
+    } else {
+      setActiveMode("builtin");
+    }
+
+    setChecking(false);
+  };
+
+  useEffect(() => {
+    checkConnections();
+    const interval = setInterval(checkConnections, 20000);
+    return () => clearInterval(interval);
+  }, [hostUrl]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -122,6 +188,12 @@ export default function ChatDemo() {
   useEffect(() => () => {
     if (timerRef.current) clearInterval(timerRef.current);
   }, []);
+
+  const handleSaveHost = (newUrl: string) => {
+    const trimmed = newUrl.trim();
+    setHostUrl(trimmed);
+    localStorage.setItem("tejapriyan_host_url", trimmed);
+  };
 
   const resetChat = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -135,102 +207,109 @@ export default function ChatDemo() {
     ]);
   };
 
+  const streamFromOllama = async (endpoint: string, promptHistory: Msg[]) => {
+    const apiMessages = promptHistory
+      .filter((m) => m.text.trim())
+      .map((m) => ({
+        role: m.role === "bot" ? "assistant" : "user",
+        content: m.text,
+      }));
+
+    const cleanEndpoint = endpoint.replace(/\/+$/, "");
+    const res = await fetch(`${cleanEndpoint}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "tejapriyan",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are Tejapriyan, a personal AI model fine-tuned by Teja Priyan. Answer helpfully, accurately, and concisely. If asked for SQL, explain the reasoning first in <think> tags.",
+          },
+          ...apiMessages,
+        ],
+        stream: true,
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      throw new Error(`Ollama responded with status ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = "";
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          const token = parsed.message?.content || "";
+          fullText += token;
+          setMessages((prev) => {
+            const copy = [...prev];
+            copy[copy.length - 1] = {
+              role: "bot",
+              text: fullText,
+              done: parsed.done || false,
+            };
+            return copy;
+          });
+        } catch {
+          // partial line chunk
+        }
+      }
+    }
+
+    setMessages((prev) => {
+      const copy = [...prev];
+      copy[copy.length - 1] = { role: "bot", text: fullText, done: true };
+      return copy;
+    });
+    setStreaming(false);
+  };
+
   const ask = async (raw: string) => {
     const q = raw.trim();
     if (!q || streaming) return;
     setStreaming(true);
     setInput("");
 
-    // Build next messages state with user message
     const updatedHistory: Msg[] = [...messages, { role: "user", text: q, done: true }];
     setMessages([...updatedHistory, { role: "bot", text: "", done: false }]);
 
-    // 1. Live Cloud Inference (Tejapriyan Fine-Tuned Model)
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${LIVE_KEY}`,
-        },
-        body: JSON.stringify({
-          model: LIVE_MODEL,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are Tejapriyan, a personal AI model created and fine-tuned by Teja Priyan. You are built on Qwen open weights with specialized skills in SQL reasoning, schema analysis, coding, mathematics, and general conversation. When asked who built, created, or trained you, always state you are Tejapriyan, created and fine-tuned by Teja Priyan. For SQL queries, wrap your schema thoughts in <think> tags first. You are Tejapriyan. Answer clearly, accurately, and helpfully.",
-            },
-            ...updatedHistory.map((m) => ({
-              role: m.role === "bot" ? "assistant" : "user",
-              content: m.text,
-            })),
-          ],
-          temperature: 0.6,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const replyText = data.choices?.[0]?.message?.content || "No response received.";
-        let i = 0;
-        timerRef.current = setInterval(() => {
-          i += 6;
-          const slice = replyText.slice(0, i);
-          const finished = i >= replyText.length;
-          setMessages((prev) => {
-            const copy = [...prev];
-            copy[copy.length - 1] = { role: "bot", text: slice, done: finished };
-            return copy;
-          });
-          if (finished) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            setStreaming(false);
-          }
-        }, 10);
-        return;
-      }
-    } catch (err) {
-      console.warn("Live cloud call failed, using built-in reasoning engine:", err);
-    }
-
-    // 2. Check local Ollama if active
-    if (ollamaConnected) {
+    // Priority 1: Visitor's Local PC Ollama (http://localhost:11434)
+    if (localAvailable) {
       try {
-        const apiMessages = updatedHistory
-          .filter((m) => m.text.trim())
-          .map((m) => ({
-            role: m.role === "bot" ? "assistant" : "user",
-            content: m.text,
-          }));
-
-        const response = await fetch("http://localhost:11434/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "tejapriyan",
-            messages: apiMessages,
-            stream: false,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const replyText = data.message?.content || data.response || "No response received.";
-          setMessages((prev) => {
-            const copy = [...prev];
-            copy[copy.length - 1] = { role: "bot", text: replyText, done: true };
-            return copy;
-          });
-          setStreaming(false);
-          return;
-        }
-      } catch {
-        // Fall through
+        await streamFromOllama("http://localhost:11434", updatedHistory);
+        return;
+      } catch (err) {
+        console.warn("Local Ollama stream failed, trying fallback:", err);
       }
     }
 
-    // 3. Built-in instant fallback reasoning engine
+    // Priority 2: Teja's Live Host PC Tunnel (Shared with the World)
+    const remoteTarget = hostUrl.trim();
+    if (remoteAvailable && remoteTarget) {
+      try {
+        await streamFromOllama(remoteTarget, updatedHistory);
+        return;
+      } catch (err) {
+        console.warn("Remote Host PC stream failed, trying built-in engine:", err);
+      }
+    }
+
+    // Priority 3: Built-in Standalone Intelligence Engine (Always online, 0 external dependencies)
     const reply = getAssistantResponse(messages, q);
     let i = 0;
     timerRef.current = setInterval(() => {
@@ -249,9 +328,15 @@ export default function ChatDemo() {
     }, 12);
   };
 
+  const copyCorsCmd = () => {
+    navigator.clipboard.writeText('$env:OLLAMA_ORIGINS="*" ; ollama serve');
+    setCopiedCors(true);
+    setTimeout(() => setCopiedCors(false), 2000);
+  };
+
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">
-      {/* header */}
+    <div className="relative overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-line/70 px-4 py-3 bg-raise">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-md border border-amber/40 bg-panel">
@@ -264,24 +349,57 @@ export default function ChatDemo() {
                 Identity Fine-Tuned
               </span>
             </div>
-            <div className="flex items-center gap-1.5 font-mono text-[9.5px] text-mute">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-mint" />
-              <span className="text-mint font-medium">Tejapriyan Model Live (Online)</span>
+            {/* Live Mode Indicator */}
+            <div className="flex items-center gap-1.5 font-mono text-[9.5px]">
+              {activeMode === "local" && (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-mint animate-pulse" />
+                  <span className="text-mint font-medium">Local Ollama Active (localhost:11434)</span>
+                </>
+              )}
+              {activeMode === "remote" && (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-mint animate-pulse" />
+                  <span className="text-mint font-medium">Live Host PC Online (World Node)</span>
+                </>
+              )}
+              {activeMode === "builtin" && (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber/70" />
+                  <span className="text-mute">Built-in Intelligence (Zero Latency)</span>
+                </>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Action buttons */}
         <div className="flex items-center gap-2">
           {messages.length > 2 && (
             <button
               onClick={resetChat}
               className="flex items-center gap-1 rounded border border-line px-2 py-1 font-mono text-[10px] text-mute hover:border-amber/40 hover:text-amber transition-colors"
-              title="Reset conversation history"
+              title="Reset conversation"
             >
               <RotateCcw size={10} />
               <span>clear</span>
             </button>
           )}
+
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={cn(
+              "flex items-center gap-1 rounded border px-2 py-1 font-mono text-[10px] transition-colors",
+              showSettings || activeMode !== "builtin"
+                ? "border-amber/50 bg-amber/10 text-amber font-semibold"
+                : "border-line text-mute hover:border-line hover:text-ink"
+            )}
+            title="Configure Live Model Node (Local or Remote PC)"
+          >
+            <Settings size={11} className={checking ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">Node Settings</span>
+          </button>
+
           <a
             href="https://huggingface.co/teja161615/Tejapriyan-8B"
             target="_blank"
@@ -294,7 +412,94 @@ export default function ChatDemo() {
         </div>
       </div>
 
-      {/* message list */}
+      {/* Settings Panel Popover */}
+      {showSettings && (
+        <div className="border-b border-line bg-raise/95 px-4 py-3.5 text-xs text-mute backdrop-blur-md">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1.5 font-mono text-[11px] font-semibold text-ink uppercase tracking-wider">
+              <Cpu size={13} className="text-amber" />
+              <span>Model Execution Modes</span>
+            </div>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="text-faint hover:text-ink p-0.5"
+            >
+              <X size={13} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            {/* Mode 1: Local PC */}
+            <div className={cn(
+              "rounded-lg border p-2.5 transition-colors",
+              localAvailable ? "border-mint/50 bg-mint/5" : "border-line bg-panel/50"
+            )}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-ink flex items-center gap-1.5">
+                  <Laptop size={12} className={localAvailable ? "text-mint" : "text-faint"} />
+                  Visitor's Local PC
+                </span>
+                <span className={cn("font-mono text-[9px] px-1.5 py-0.5 rounded", localAvailable ? "bg-mint/20 text-mint font-semibold" : "bg-panel text-faint")}>
+                  {localAvailable ? "CONNECTED" : "OFFLINE"}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed mb-2 text-mute">
+                Run <code className="text-amber">ollama run tejapriyan</code> on your machine.
+              </p>
+              <button
+                onClick={copyCorsCmd}
+                className="flex items-center gap-1 text-[10px] font-mono text-faint hover:text-amber bg-raise rounded border border-line px-1.5 py-0.5"
+                title="Copy CORS command to enable browser access"
+              >
+                {copiedCors ? <Check size={10} className="text-mint" /> : <Copy size={10} />}
+                <span>{copiedCors ? "Copied Command!" : "Copy CORS Start Command"}</span>
+              </button>
+            </div>
+
+            {/* Mode 2: Remote Host PC Tunnel */}
+            <div className={cn(
+              "rounded-lg border p-2.5 transition-colors",
+              remoteAvailable ? "border-mint/50 bg-mint/5" : "border-line bg-panel/50"
+            )}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-ink flex items-center gap-1.5">
+                  <Globe size={12} className={remoteAvailable ? "text-mint" : "text-faint"} />
+                  Teja's Live Host PC (World Node)
+                </span>
+                <span className={cn("font-mono text-[9px] px-1.5 py-0.5 rounded", remoteAvailable ? "bg-mint/20 text-mint font-semibold" : "bg-panel text-faint")}>
+                  {remoteAvailable ? "ONLINE" : "STANDBY"}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed mb-2 text-mute">
+                Enter your live Cloudflare tunnel or public URL so the world chats with your PC:
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={hostUrl}
+                  onChange={(e) => handleSaveHost(e.target.value)}
+                  placeholder="https://xxxx.trycloudflare.com"
+                  className="w-full rounded border border-line bg-panel px-2 py-1 font-mono text-[10px] text-ink outline-none focus:border-amber/60"
+                />
+                <button
+                  onClick={checkConnections}
+                  disabled={checking}
+                  className="rounded bg-amber/20 border border-amber/40 px-2 py-1 text-[10px] font-mono font-semibold text-amber hover:bg-amber hover:text-panel disabled:opacity-40 shrink-0"
+                >
+                  {checking ? "Checking..." : "Test"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-line/50 pt-2 text-[10px] text-faint font-mono">
+            <span>Current Route: <strong className="text-amber">{activeMode === "local" ? "Local PC (localhost:11434)" : activeMode === "remote" ? "Remote Host Tunnel" : "Built-in Intelligence Engine"}</strong></span>
+            <span>Zero external cloud APIs</span>
+          </div>
+        </div>
+      )}
+
+      {/* Message List */}
       <div ref={scrollRef} className="terminal-scroll h-[340px] space-y-4 overflow-y-auto px-4 py-4 bg-bg">
         {messages.map((m, i) => (
           <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
@@ -318,12 +523,19 @@ export default function ChatDemo() {
         ))}
         {streaming && messages[messages.length - 1]?.text === "" && (
           <div className="flex items-center gap-2 font-mono text-[10.5px] text-faint">
-            <Loader2 size={11} className="animate-spin text-amber" /> generating response…
+            <Loader2 size={11} className="animate-spin text-amber" />
+            <span>
+              {activeMode === "local"
+                ? "Streaming from local GPU (localhost:11434)..."
+                : activeMode === "remote"
+                ? "Streaming from Teja's Live Host PC..."
+                : "Computing response via built-in engine..."}
+            </span>
           </div>
         )}
       </div>
 
-      {/* input bar */}
+      {/* Input bar */}
       <div className="border-t border-line/70 p-3 bg-raise">
         <div className="mb-2.5 flex flex-wrap gap-1">
           {SUGGESTIONS.map((s) => (
@@ -354,7 +566,7 @@ export default function ChatDemo() {
           <button
             type="submit"
             disabled={streaming || !input.trim()}
-            className="rounded bg-amber px-2 py-1 text-[#0a0908] font-semibold text-[11px] transition-colors hover:bg-ink hover:text-amber disabled:opacity-40"
+            className="rounded bg-amber px-2.5 py-1 text-[#0a0908] font-semibold text-[11px] transition-colors hover:bg-ink hover:text-amber disabled:opacity-40"
           >
             Send
           </button>
