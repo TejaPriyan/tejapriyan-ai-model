@@ -30,4 +30,4 @@ Write-Host "Now anyone in the world visiting your website will chat with your PC
 Write-Host "-------------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 
-.\cloudflared.exe tunnel --url http://localhost:11434
+.\cloudflared.exe tunnel --url http://localhost:11434 --http-host-header localhost
