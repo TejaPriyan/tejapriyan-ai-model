@@ -432,6 +432,111 @@ Or download my quantized GGUF weights directly from Hugging Face at [teja161615/
 }
 
 /**
+ * Technical knowledge and general computer science topics
+ */
+function solveTechAndKnowledge(q: string): string | null {
+  const lower = q.toLowerCase().trim();
+
+  // Founder of ChatGPT / OpenAI
+  if (
+    lower.includes("founder of chatgpt") ||
+    lower.includes("who created chatgpt") ||
+    lower.includes("who made chatgpt") ||
+    lower.includes("founded openai") ||
+    lower.includes("founder of openai") ||
+    lower.includes("who founded chatgpt")
+  ) {
+    return `**ChatGPT was created by OpenAI.**
+
+OpenAI was founded in December 2015 by an initial team of researchers and tech leaders, notably:
+- **Sam Altman** (Current CEO)
+- **Greg Brockman** (President)
+- **Ilya Sutskever** (Former Chief Scientist)
+- **Elon Musk** (Early co-founder & investor, departed in 2018)
+- **Wojciech Zaremba**
+- **John Schulman**
+
+ChatGPT was publicly unveiled in **November 2022**, rapidly scaling to hundreds of millions of users based on the GPT-3.5 and subsequent GPT-4 large language models.`;
+  }
+
+  // Java and Python comparison
+  if (
+    (lower.includes("java") && lower.includes("python")) ||
+    lower.includes("difference between java and python") ||
+    lower.includes("python vs java") ||
+    lower.includes("java vs python")
+  ) {
+    return `### Comparison: Java vs Python
+
+| Dimension | Java | Python |
+| :--- | :--- | :--- |
+| **Typing** | Statically typed (\`int x = 5;\`) | Dynamically typed (\`x = 5\`) |
+| **Execution** | Compiled to bytecode, runs on JVM | Interpreted line-by-line |
+| **Speed** | High execution performance (JIT) | Slower raw execution, optimized by C libraries |
+| **Syntax** | Verbose, strict object-oriented structure | Clean, expressive, human-readable |
+| **Primary Uses** | Enterprise backend (Spring), Android, finance | AI / ML (PyTorch), Data Science, Scripting, FastAPI |
+
+**Key Takeaways:**
+- Choose **Python** for machine learning, AI model fine-tuning, data analysis, and rapid development.
+- Choose **Java** for massive-scale enterprise backends, banking microservices, and mobile Android apps.`;
+  }
+
+  // What is Java
+  if (lower === "what is java" || lower.startsWith("what is java ") || lower.includes("explain java")) {
+    return `**Java** is a multi-platform, object-oriented, statically typed programming language created by James Gosling at Sun Microsystems (now Oracle) in 1995.
+
+It follows the principle of *"Write Once, Run Anywhere"* (WORA), compiling source code into bytecode that executes on the **Java Virtual Machine (JVM)** across Windows, Linux, and macOS. It remains one of the world's most widely deployed enterprise languages.`;
+  }
+
+  // What is Python
+  if (lower === "what is python" || lower.startsWith("what is python ") || lower.includes("explain python")) {
+    return `**Python** is a high-level, interpreted, dynamically typed programming language created by Guido van Rossum in 1991.
+
+Renowned for its clean, whitespace-based syntax and rich ecosystem (such as NumPy, Pandas, PyTorch, and Transformers), Python is the global industry standard for **Artificial Intelligence, Data Science, Machine Learning, Automation, and Web Development**.`;
+  }
+
+  // Machine Learning / AI
+  if (lower.includes("what is machine learning") || lower.includes("what is ml")) {
+    return `**Machine Learning (ML)** is a branch of artificial intelligence where algorithms learn patterns from data and improve their performance over time without being explicitly programmed with static rules.
+
+The three primary categories are:
+1. **Supervised Learning**: Models learn from labeled input-output pairs (e.g. classification, regression).
+2. **Unsupervised Learning**: Models detect hidden structures or clusters in unlabeled data.
+3. **Reinforcement Learning**: Agents learn optimal actions through trial-and-error rewards (e.g. GRPO, PPO).`;
+  }
+
+  // Large Language Model / Transformer
+  if (lower.includes("what is an llm") || lower.includes("what is a large language model") || lower.includes("what is transformer")) {
+    return `A **Large Language Model (LLM)** is a deep neural network (almost universally based on the **Transformer architecture** with multi-head self-attention) trained on billions to trillions of text tokens.
+
+Modern LLMs like Qwen3 and Tejapriyan predict token sequences and are fine-tuned with SFT (Supervised Fine-Tuning) and RL (Reinforcement Learning with rewards) to follow instructions, write code, and solve reasoning tasks.`;
+  }
+
+  // Tech Founders
+  if (lower.includes("who founded google") || lower.includes("founder of google")) {
+    return `**Google** was founded in September 1998 by **Larry Page** and **Sergey Brin** while they were Ph.D. students at Stanford University.`;
+  }
+
+  if (lower.includes("who founded microsoft") || lower.includes("founder of microsoft")) {
+    return `**Microsoft** was founded on April 4, 1975, by **Bill Gates** and **Paul Allen** in Albuquerque, New Mexico.`;
+  }
+
+  if (lower.includes("who founded apple") || lower.includes("founder of apple")) {
+    return `**Apple** was founded on April 1, 1976, by **Steve Jobs, Steve Wozniak, and Ronald Wayne** in Los Altos, California.`;
+  }
+
+  if (lower.includes("what is git")) {
+    return `**Git** is a distributed version control system designed by **Linus Torvalds** in 2005 to track source code changes with high speed and data integrity, supporting distributed branching and merging workflows.`;
+  }
+
+  if (lower.includes("what is docker")) {
+    return `**Docker** is a containerization platform that packages software code, libraries, system tools, and runtime settings into isolated, portable containers that execute consistently across development and production environments.`;
+  }
+
+  return null;
+}
+
+/**
  * Main routing engine for the conversational assistant
  */
 export function getAssistantResponse(history: ChatMessage[], currentInput: string): string {
@@ -442,31 +547,35 @@ export function getAssistantResponse(history: ChatMessage[], currentInput: strin
   const mathAnswer = solveArithmetic(trimmed);
   if (mathAnswer) return mathAnswer;
 
-  // 2. Check SQL query generation request
+  // 2. Check Technical Knowledge & Comparisons (Java vs Python, ChatGPT founder, etc.)
+  const techAnswer = solveTechAndKnowledge(trimmed);
+  if (techAnswer) return techAnswer;
+
+  // 3. Check SQL query generation request
   const sqlAnswer = solveSqlRequest(trimmed);
   if (sqlAnswer) return sqlAnswer;
 
-  // 3. Check Coding & Python questions
+  // 4. Check Coding & Python questions
   const codeAnswer = solveCodeRequest(trimmed);
   if (codeAnswer) return codeAnswer;
 
-  // 4. Check Identity & Lineage
+  // 5. Check Identity & Lineage
   const identityAnswer = solveIdentity(trimmed, history);
   if (identityAnswer) return identityAnswer;
 
-  // 5. Check Technical Concepts (ACID, Normalization, GRPO, SFT, JOINs)
+  // 6. Check Technical Concepts (ACID, Normalization, GRPO, SFT, JOINs)
   const conceptAnswer = solveConceptQuestion(trimmed);
   if (conceptAnswer) return conceptAnswer;
 
-  // 6. Check Conversational, Greetings & General Knowledge
+  // 7. Check Conversational, Greetings & General Knowledge
   const conversationalAnswer = solveConversational(trimmed, history);
   if (conversationalAnswer) return conversationalAnswer;
 
-  // 7. Context-Aware Fallback (instead of generic repetition)
-  const lastUserMsg = history.filter((m) => m.role === "user").slice(-1)[0]?.text || "";
-  if (lastUserMsg) {
-    return `Regarding your inquiry "${trimmed}": as Tejapriyan (fine-tuned on Qwen3-8B), I can compute math, generate executable SQL queries, write code, or explain database architecture. If you have a specific arithmetic problem, database schema, or code snippet you'd like me to analyze, please let me know!`;
-  }
+  // 8. Natural Open-Ended Informative Response
+  return `I'm **Tejapriyan**, fine-tuned by Teja Priyan. Here are quick ways I can help with "${trimmed}":
 
-  return `I understand you're asking about "${trimmed}". As an 8B AI model fine-tuned by Teja Priyan, I specialize in mathematical reasoning, executable SQL generation, and code. Feel free to ask me to solve an arithmetic expression, generate a query, or explain a concept!`;
+- **Arithmetic**: You can ask any math calculation (e.g. \`88 plus 766565\`).
+- **SQL & Data**: Ask me to write database queries, joins, or table schemas.
+- **Code & Tech**: Ask about Python, Java, Docker, Git, or database indexing.
+- **Live AI**: Connect a free Groq API key in the chat settings to ask literally any general question in real time!`;
 }

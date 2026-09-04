@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Radio, RotateCcw } from "lucide-react";
+import { Check, ExternalLink, Key, Loader2, Radio, RotateCcw, Zap } from "lucide-react";
 import { LogoMark } from "./ui";
 import { cn } from "@/utils/cn";
 
@@ -76,7 +76,6 @@ function FormattedText({ content }: { content: string }) {
 
 import { getAssistantResponse } from "@/utils/aiResponder";
 
-
 export default function ChatDemo() {
   const [messages, setMessages] = useState<Msg[]>([
     {
@@ -88,6 +87,12 @@ export default function ChatDemo() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [ollamaConnected, setOllamaConnected] = useState<boolean | null>(null);
+  const [apiKey, setApiKey] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("tejapriyan_live_key") || "" : ""));
+  const [provider, setProvider] = useState<"groq" | "openrouter">(() => (typeof window !== "undefined" ? (localStorage.getItem("tejapriyan_live_provider") as any) || "groq" : "groq"));
+  const [showSettings, setShowSettings] = useState(false);
+  const [tempKey, setTempKey] = useState(apiKey);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -133,6 +138,18 @@ export default function ChatDemo() {
     ]);
   };
 
+  const saveLiveSettings = () => {
+    const trimmed = tempKey.trim();
+    setApiKey(trimmed);
+    localStorage.setItem("tejapriyan_live_key", trimmed);
+    localStorage.setItem("tejapriyan_live_provider", provider);
+    setSavedSuccess(true);
+    setTimeout(() => {
+      setSavedSuccess(false);
+      setShowSettings(false);
+    }, 1200);
+  };
+
   const ask = async (raw: string) => {
     const q = raw.trim();
     if (!q || streaming) return;
@@ -143,10 +160,68 @@ export default function ChatDemo() {
     const updatedHistory: Msg[] = [...messages, { role: "user", text: q, done: true }];
     setMessages([...updatedHistory, { role: "bot", text: "", done: false }]);
 
-    // Attempt live multi-turn Ollama API call if connected
+    // 1. Attempt Live LLM API if user configured an API key (Groq or OpenRouter)
+    if (apiKey.trim()) {
+      try {
+        const endpoint =
+          provider === "groq"
+            ? "https://api.groq.com/openai/v1/chat/completions"
+            : "https://openrouter.ai/api/v1/chat/completions";
+        const model =
+          provider === "groq" ? "llama-3.3-70b-versatile" : "meta-llama/llama-3.3-70b-instruct";
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are Tejapriyan, a personal AI model created and fine-tuned by Teja Priyan on Qwen3-8B open weights. You specialize in SQL schema reasoning, coding, math, and general conversation. If asked who created you, answer that you were fine-tuned by Teja Priyan. For SQL queries, wrap your schema thoughts in <think> tags first.",
+              },
+              ...updatedHistory.map((m) => ({
+                role: m.role === "bot" ? "assistant" : "user",
+                content: m.text,
+              })),
+            ],
+            temperature: 0.6,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const replyText = data.choices?.[0]?.message?.content || "No response received.";
+          // Stream reply smoothly into UI
+          let i = 0;
+          timerRef.current = setInterval(() => {
+            i += 6;
+            const slice = replyText.slice(0, i);
+            const finished = i >= replyText.length;
+            setMessages((prev) => {
+              const copy = [...prev];
+              copy[copy.length - 1] = { role: "bot", text: slice, done: finished };
+              return copy;
+            });
+            if (finished) {
+              if (timerRef.current) clearInterval(timerRef.current);
+              setStreaming(false);
+            }
+          }, 10);
+          return;
+        }
+      } catch (err) {
+        console.warn("Live API call failed, falling back to local reasoning engine:", err);
+      }
+    }
+
+    // 2. Attempt live multi-turn Ollama API call if connected locally
     if (ollamaConnected) {
       try {
-        // Send FULL conversation memory to Ollama's chat endpoint
         const apiMessages = updatedHistory
           .filter((m) => m.text.trim())
           .map((m) => ({
@@ -215,7 +290,12 @@ export default function ChatDemo() {
               </span>
             </div>
             <div className="flex items-center gap-1.5 font-mono text-[9.5px] text-mute">
-              {ollamaConnected ? (
+              {apiKey.trim() ? (
+                <>
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-mint" />
+                  <span className="text-mint font-medium">⚡ Live LLM Active ({provider.toUpperCase()})</span>
+                </>
+              ) : ollamaConnected ? (
                 <>
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-mint" />
                   <span className="text-mint font-medium">Local Ollama Active (Streaming Weights)</span>
@@ -223,7 +303,7 @@ export default function ChatDemo() {
               ) : (
                 <>
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" />
-                  <span>In-Browser Interactive Assistant</span>
+                  <span>In-Browser Reasoning Engine</span>
                 </>
               )}
             </div>
@@ -231,6 +311,20 @@ export default function ChatDemo() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={cn(
+              "flex items-center gap-1 rounded border px-2 py-1 font-mono text-[10px] transition-colors",
+              apiKey.trim()
+                ? "border-mint/50 bg-mint/10 text-mint"
+                : "border-amber/40 bg-amber/10 text-amber hover:bg-amber/20"
+            )}
+            title="Connect Live LLM (Groq / OpenRouter)"
+          >
+            <Zap size={10} className={apiKey.trim() ? "text-mint" : "text-amber"} />
+            <span>{apiKey.trim() ? "Live AI" : "⚡ Connect Live AI"}</span>
+          </button>
+
           {messages.length > 2 && (
             <button
               onClick={resetChat}
@@ -252,6 +346,72 @@ export default function ChatDemo() {
           </a>
         </div>
       </div>
+
+      {/* Live AI settings drawer */}
+      {showSettings && (
+        <div className="border-b border-line/80 bg-[#0d0b08] p-3 text-xs space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] font-semibold text-ink flex items-center gap-1.5">
+              <Key size={12} className="text-amber" /> Connect Live LLM (Real ChatGPT Answers)
+            </span>
+            <span className="font-mono text-[9.5px] text-mint bg-mint/10 border border-mint/30 px-1.5 py-0.5 rounded">
+              100% Free
+            </span>
+          </div>
+          <p className="text-[11px] text-mute leading-relaxed">
+            Connect a free Groq key to ask Tejapriyan <strong>literally any question</strong> in the universe with live 70B reasoning. Key is stored locally in your browser.
+          </p>
+          <div className="space-y-2">
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as any)}
+              className="w-full rounded border border-line bg-panel px-2.5 py-1.5 font-mono text-[11px] text-ink outline-none"
+            >
+              <option value="groq">Groq Cloud (Free • Llama 3.3 70B • 300 tok/s)</option>
+              <option value="openrouter">OpenRouter (Free models)</option>
+            </select>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={tempKey}
+                onChange={(e) => setTempKey(e.target.value)}
+                placeholder="Paste your free API key here (e.g. gsk_...)"
+                className="flex-1 rounded border border-line bg-panel px-2.5 py-1.5 font-mono text-[11px] text-ink outline-none focus:border-amber"
+              />
+              <button
+                onClick={saveLiveSettings}
+                className="flex items-center justify-center gap-1 rounded bg-amber px-3.5 py-1.5 font-mono text-[11px] font-semibold text-[#0a0805] hover:bg-amber/90 transition-colors shrink-0"
+              >
+                {savedSuccess ? <Check size={12} /> : null}
+                <span>{savedSuccess ? "Saved!" : "Save"}</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-1 text-[10.5px]">
+            <a
+              href="https://console.groq.com/keys"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-amber hover:underline font-mono"
+            >
+              <span>Get Free Groq Key (Instant, no credit card required)</span>
+              <ExternalLink size={10} />
+            </a>
+            {apiKey && (
+              <button
+                onClick={() => {
+                  setTempKey("");
+                  setApiKey("");
+                  localStorage.removeItem("tejapriyan_live_key");
+                }}
+                className="text-mute hover:text-red-400 font-mono transition-colors"
+              >
+                Disconnect key
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* message list */}
       <div ref={scrollRef} className="terminal-scroll h-[340px] space-y-4 overflow-y-auto px-4 py-4 bg-bg">
