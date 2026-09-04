@@ -6,67 +6,76 @@ import { cn } from "@/utils/cn";
 type Msg = { role: "user" | "bot"; text: string; done: boolean };
 
 const SUGGESTIONS = [
-  "Who are you?",
+  "What is 8 plus 7?",
   "Who is Teja Priyan?",
-  "How did he train your SQL specialty?",
-  "Show me an example SQL query you reason through",
+  "Write an SQL query for top salaries",
+  "Difference between INNER and LEFT JOIN",
   "How can I run you on my computer?",
 ];
 
-function matchContextualReply(history: Msg[], currentInput: string): string {
-  const q = currentInput.toLowerCase().trim();
-  const lastUserMsg = history.filter((m) => m.role === "user").slice(-1)[0]?.text.toLowerCase() || "";
-  const lastBotMsg = history.filter((m) => m.role === "bot").slice(-1)[0]?.text.toLowerCase() || "";
+function FormattedMessage({ text }: { text: string }) {
+  // Check if text has <think>...</think>
+  const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/);
 
-  // 1. Follow-up regarding creator / "he" / "him" / "who is he"
-  if (
-    (q.includes("he") || q.includes("him") || q.includes("his") || q.includes("creator") || q.includes("author") || q.includes("who built")) &&
-    (lastUserMsg.includes("teja") || lastBotMsg.includes("teja priyan") || q.includes("teja"))
-  ) {
-    if (q.includes("how") || q.includes("train") || q.includes("build") || q.includes("do that")) {
-      return "Teja Priyan trained me using a two-stage approach: first, Supervised Fine-Tuning (SFT) on phrasing-varied identity pairs to instill my personality directly into the weights; second, Group Relative Policy Optimization (GRPO) with a live SQLite reward environment to master schema reasoning and correct query generation.";
-    }
-    return "Teja Priyan is an AI practitioner and fine-tuner who built me to prove that an individual developer can create a high-precision, identity-native model on open weights without commercial lab compute.";
+  if (thinkMatch) {
+    const thinkContent = thinkMatch[1].trim();
+    const restContent = thinkMatch[2].trim();
+    return (
+      <div className="space-y-2">
+        <div className="rounded border border-amber/25 bg-amber/5 px-2.5 py-1.5 font-mono text-[11px] text-mute">
+          <div className="text-[10px] font-semibold text-amber uppercase tracking-wider mb-1 flex items-center gap-1">
+            <span>💭 Reasoning Chain</span>
+          </div>
+          <div className="whitespace-pre-wrap leading-relaxed opacity-85">{thinkContent}</div>
+        </div>
+        {restContent && <FormattedText content={restContent} />}
+      </div>
+    );
   }
 
-  // 2. Follow-up asking for examples or "show me"
-  if (q.includes("example") || q.includes("show me") || q.includes("demonstrate") || q.includes("give me one")) {
-    if (lastUserMsg.includes("sql") || lastBotMsg.includes("sql") || q.includes("sql") || q.includes("query")) {
-      return "Here is how I reason through a query before executing it:\n\n<think>\n1. Question: Find departments with more than 3 instructors\n2. Join departments with instructors on dept_id\n3. Group by department id and name\n4. Filter aggregated groups using HAVING COUNT(*) > 3\n</think>\n\n```sql\nSELECT d.name, COUNT(i.id) AS instructor_count\nFROM departments d\nJOIN instructors i ON i.dept_id = d.id\nGROUP BY d.id, d.name\nHAVING COUNT(i.id) > 3\nORDER BY instructor_count DESC;\n```\nI verify syntax and logic against the schema before committing the query.";
-    }
-  }
-
-  // 3. Follow-up asking about base model or lineage
-  if (q.includes("base") || q.includes("qwen") || q.includes("scratch") || q.includes("alibaba")) {
-    return "I am built on top of Qwen3-8B open weights released by Alibaba Cloud under Apache-2.0. Teja Priyan preserved the base model's broad conversational intelligence while fine-tuning my identity and SQL execution capability.";
-  }
-
-  // 4. Questions about identity / creator
-  if (q.includes("who are you") || q.includes("your name") || q.includes("what are you") || q.includes("introduce")) {
-    return "I'm Tejapriyan – an AI model created and fine-tuned by Teja Priyan. On top of general conversation and coding, I specialize in SQL: reasoning about the database schema first, then writing correct, runnable queries. I was built on open weights (Qwen3) and fine-tuned independently.";
-  }
-
-  if (q.includes("who is teja priyan") || (q.includes("teja priyan") && !q.includes("how"))) {
-    return "Teja Priyan is a fine-tuner of AI models – he gives them their personality, trains them on his data, and credits their base model. He's a creator in the open-source community, with a focus on open, transparent AI. His work is released under open licenses, allowing anyone to use, adapt, and run it.";
-  }
-
-  // 5. Questions about SQL / specialty
-  if (q.includes("specialty") || q.includes("what do you do") || q.includes("what u do") || q.includes("capabilities")) {
-    return "I specialize in SQL – reasoning through database schemas in <think> tags before writing queries to ensure 100% executable syntax and accurate table joins. Beyond SQL, I am a capable general-purpose assistant for Python, code debugging, and technical writing.";
-  }
-
-  // 6. Running / Installing
-  if (q.includes("how") && (q.includes("run") || q.includes("use") || q.includes("install") || q.includes("download") || q.includes("ollama"))) {
-    return "You can run me completely offline in your terminal using Ollama:\n```bash\nollama run tejapriyan\n```\nOr download my GGUF quantization (~4.7 GB) and weights directly from Hugging Face at `teja161615/Tejapriyan-8B-GGUF`.";
-  }
-
-  // 7. Conversational continuity fallback
-  if (lastUserMsg && (q.includes("and") || q.includes("what about") || q.includes("why") || q.includes("how"))) {
-    return `Building on what we discussed earlier regarding ${lastUserMsg.slice(0, 35)}: my fine-tuned weights are structured to maintain coherence across multi-turn exchanges while keeping responses strictly grounded in my training lineage and SQL verification rules.`;
-  }
-
-  return "I'm Tejapriyan, built by Teja Priyan. Ask me anything about my identity, my SQL training with SQLite execution rewards, or test a follow-up question to see how I maintain conversational context!";
+  return <FormattedText content={text} />;
 }
+
+function FormattedText({ content }: { content: string }) {
+  // Parse code blocks vs regular text
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-1.5 leading-relaxed">
+      {parts.map((part, idx) => {
+        if (part.startsWith("```")) {
+          const lines = part.slice(3, -3).trim().split("\n");
+          const firstLine = lines[0].trim();
+          const isLang = /^[a-z]+$/i.test(firstLine);
+          const lang = isLang ? firstLine : "";
+          const code = (isLang ? lines.slice(1) : lines).join("\n");
+          return (
+            <div key={idx} className="my-2 overflow-x-auto rounded border border-line bg-[#090806] p-2.5 font-mono text-[11px] text-amber/95">
+              {lang && <div className="text-[9px] uppercase tracking-wider text-mute mb-1 font-sans">{lang}</div>}
+              <pre className="whitespace-pre leading-normal">{code}</pre>
+            </div>
+          );
+        }
+
+        // Render bold text
+        const boldParts = part.split(/(\*\*.*?\*\*)/g);
+        return (
+          <span key={idx} className="whitespace-pre-wrap">
+            {boldParts.map((b, bIdx) => {
+              if (b.startsWith("**") && b.endsWith("**")) {
+                return <strong key={bIdx} className="font-semibold text-ink">{b.slice(2, -2)}</strong>;
+              }
+              return b;
+            })}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+import { getAssistantResponse } from "@/utils/aiResponder";
+
 
 export default function ChatDemo() {
   const [messages, setMessages] = useState<Msg[]>([
@@ -172,7 +181,7 @@ export default function ChatDemo() {
     }
 
     // Contextual fallback responder that reads previous messages history
-    const reply = matchContextualReply(messages, q);
+    const reply = getAssistantResponse(messages, q);
     let i = 0;
     timerRef.current = setInterval(() => {
       i += 3;
@@ -261,7 +270,7 @@ export default function ChatDemo() {
                   Tejapriyan ›
                 </span>
               )}
-              <div className="whitespace-pre-wrap">{m.text}</div>
+              <FormattedMessage text={m.text} />
               {!m.done && <span className="ml-0.5 inline-block h-3 w-[5px] animate-blink bg-amber align-middle" />}
             </div>
           </div>
