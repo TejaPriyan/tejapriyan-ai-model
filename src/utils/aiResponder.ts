@@ -321,6 +321,59 @@ Tejapriyan used GRPO in Phase 4 to reward syntactically valid SQLite queries (+1
 }
 
 /**
+ * Date, Time, and Calendar queries – uses the visitor's real local clock
+ */
+function solveDateTimeRequest(q: string): string | null {
+  const lower = q.toLowerCase().trim();
+
+  const now = new Date();
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  const dayName = dayNames[now.getDay()];
+  const monthName = monthNames[now.getMonth()];
+  const date = now.getDate();
+  const year = now.getFullYear();
+  const hours = now.getHours();
+  const minutes = now.getMinutes().toString().padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const h12 = hours % 12 || 12;
+
+  // Today's date
+  if (
+    lower.includes("today") && (lower.includes("date") || lower.includes("day")) ||
+    lower.includes("what date") ||
+    lower.includes("what day is") ||
+    lower.includes("today's date") ||
+    lower === "date"
+  ) {
+    return `Today is **${dayName}, ${monthName} ${date}, ${year}**.`;
+  }
+
+  // Current time
+  if (
+    lower.includes("what time") ||
+    lower.includes("current time") ||
+    lower.includes("time now") ||
+    lower === "time"
+  ) {
+    return `The current time is **${h12}:${minutes} ${ampm}** (your local time).`;
+  }
+
+  // What year
+  if (lower.includes("what year") || lower.includes("current year")) {
+    return `The current year is **${year}**.`;
+  }
+
+  // What month
+  if (lower.includes("what month") || lower.includes("current month")) {
+    return `The current month is **${monthName} ${year}**.`;
+  }
+
+  return null;
+}
+
+/**
  * Conversational & General Knowledge
  */
 function solveConversational(q: string, history: ChatMessage[]): string | null {
@@ -375,8 +428,28 @@ function solveConversational(q: string, history: ChatMessage[]): string | null {
     return "The capital of Japan is **Tokyo**.";
   }
 
+  if (lower.includes("capital of india")) {
+    return "The capital of India is **New Delhi**.";
+  }
+
+  if (lower.includes("capital of america") || lower.includes("capital of usa") || lower.includes("capital of united states")) {
+    return "The capital of the United States of America is **Washington, D.C.**";
+  }
+
   if (lower.includes("speed of light")) {
     return "The speed of light in a vacuum is approximately **299,792,458 meters per second** (about 300,000 km/s or 186,282 miles per second).";
+  }
+
+  if (lower.includes("how many planets") || lower.includes("planets in solar system")) {
+    return "There are **8 planets** in our solar system: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune.";
+  }
+
+  if (lower.includes("who invented") && lower.includes("internet")) {
+    return "The **Internet** was developed through contributions from many pioneers. Key figures include **Vint Cerf** and **Bob Kahn**, who co-designed the **TCP/IP** protocol in the 1970s, and **Tim Berners-Lee**, who invented the **World Wide Web** in 1989.";
+  }
+
+  if (lower.includes("largest ocean")) {
+    return "The **Pacific Ocean** is the largest and deepest ocean on Earth, covering approximately **165.25 million km²** — more than all of Earth's land area combined.";
   }
 
   // Multi-turn follow up
@@ -543,7 +616,11 @@ export function getAssistantResponse(history: ChatMessage[], currentInput: strin
   const trimmed = currentInput.trim();
   if (!trimmed) return "Please ask a question or provide an expression!";
 
-  // 1. Check Arithmetic & Math first (e.g. "what is 8 plus 7")
+  // 0. Check Date/Time queries first (uses real clock)
+  const dateAnswer = solveDateTimeRequest(trimmed);
+  if (dateAnswer) return dateAnswer;
+
+  // 1. Check Arithmetic & Math first (e.g. "what is 6 plus 7")
   const mathAnswer = solveArithmetic(trimmed);
   if (mathAnswer) return mathAnswer;
 

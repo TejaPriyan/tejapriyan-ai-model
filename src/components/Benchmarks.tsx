@@ -121,7 +121,7 @@ export default function Benchmarks() {
               </div>
             </div>
 
-            <div className="card-sheen rounded-xl border border-amber/35 bg-gradient-to-br from-panel via-[#181208] to-[#120e06] p-6 md:p-8 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+            <div className="card-sheen rounded-xl border border-amber/35 bg-gradient-to-br from-panel via-raise to-panel p-6 md:p-8 shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
               <blockquote className="font-serif text-xl leading-relaxed text-ink italic md:text-[1.35rem]">
                 “A small model that beats bigger ones at exactly one task — and can prove it, because the task is executed, not judged.”
               </blockquote>

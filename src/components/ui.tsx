@@ -72,7 +72,7 @@ export function CodeBlock({
   return (
     <div
       className={cn(
-        "group relative rounded-lg border bg-[#0d0b07]",
+        "group relative rounded-lg border bg-[var(--code-block-bg)]",
         accent ? "border-amber/30" : "border-line",
         className
       )}

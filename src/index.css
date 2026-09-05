@@ -37,6 +37,15 @@
   }
 }
 
+/* ─── Code block color tokens (dark mode defaults) ─── */
+:root {
+  --code-block-bg: #0d0b08;
+  --code-block-header: #141110;
+  --code-block-text: #e8c87a;
+  --code-inline-bg: rgba(242, 169, 59, 0.1);
+  --code-inline-text: #f2a93b;
+}
+
 html {
   scroll-behavior: smooth;
   transition: background-color 0.25s ease, color 0.25s ease;
@@ -55,6 +64,13 @@ html.light {
   --color-gold-deep: #8f550d;
   --color-mint: #1a883a;
   --color-crimson: #c92f22;
+
+  /* Light mode code block overrides */
+  --code-block-bg: #f5f2eb;
+  --code-block-header: #ece8de;
+  --code-block-text: #3d3525;
+  --code-inline-bg: rgba(185, 112, 10, 0.12);
+  --code-inline-text: #8f550d;
 }
 
 body {

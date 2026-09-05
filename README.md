@@ -1,92 +1,81 @@
-# Tejapriyan-8B ⚡
+# Tejapriyan AI ⚡
 
-> **A Personal AI Model with Embedded Identity & Execution-Verified NL→SQL Reasoning**  
-> Fine-tuned and shipped by **Teja Priyan** on open weights.
+> **Your personal AI assistant — runs on your computer, works offline, and chats with you right in the browser.**
+> Created and fine-tuned by **Teja Priyan**.
 
+[![Try Tejapriyan](https://img.shields.io/badge/🌐_Try_Live-tejapriyan--ai-amber.svg)](https://tejapriyan.github.io/tejapriyan-ai-model)
 [![Hugging Face Model](https://img.shields.io/badge/HuggingFace-Tejapriyan--8B-yellow.svg)](https://huggingface.co/teja161615/Tejapriyan-8B)
-[![Hugging Face GGUF](https://img.shields.io/badge/HuggingFace-GGUF--Quant-blue.svg)](https://huggingface.co/teja161615/Tejapriyan-8B-GGUF)
+[![Hugging Face GGUF](https://img.shields.io/badge/Download-GGUF_Weights-blue.svg)](https://huggingface.co/teja161615/Tejapriyan-8B-GGUF)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Runtime: Ollama](https://img.shields.io/badge/Runtime-Ollama-purple.svg)](https://ollama.com)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FTejaPriyan%2Ftejapriyan-ai-model)
 
 ---
 
-## 🚀 Quick Start (Run Locally)
+## 💬 What Can Tejapriyan Do?
 
-Run **Tejapriyan-8B** directly offline on your machine with Ollama:
+Tejapriyan is an AI chatbot that you can use directly in your browser:
 
-```bash
-ollama run tejapriyan
-```
-
-To let the website connect directly to your local Ollama instance without browser CORS blocking:
-```powershell
-$env:OLLAMA_ORIGINS="*" ; ollama serve
-```
-
-Prefer raw weights or GGUF quants?
-* **16-bit Safetensors**: [`teja161615/Tejapriyan-8B`](https://huggingface.co/teja161615/Tejapriyan-8B)
-* **Q4_K_M GGUF (4.7 GB)**: [`teja161615/Tejapriyan-8B-GGUF`](https://huggingface.co/teja161615/Tejapriyan-8B-GGUF)
+- **Ask questions** — math, dates, general knowledge, coding, and more
+- **Generate SQL queries** — write and debug database queries with step-by-step reasoning
+- **Get code snippets** — Python, JavaScript, HTML with copy & live preview
+- **Learn about AI** — ask about machine learning, transformers, and fine-tuning
+- **Run completely offline** — no internet required when using local mode
 
 ---
 
-## 🌐 Broadcast Your PC Model to the Entire World
+## 🚀 How to Use
 
-Want anyone visiting your website to chat with the model running on your home PC?
+### Option 1: Use the Website (Easiest)
 
-Simply double-click the included script in the repository:
-```cmd
-share-live-model.bat
-```
-*(Or run `./share-live-model.ps1` in PowerShell)*
+Just visit the live website — no installation needed:
 
-This automatically starts a free, zero-config Cloudflare Tunnel to port 11434:
-1. Copy the public tunnel URL printed in your console (e.g. `https://xxxx.trycloudflare.com`).
-2. Open your website -> click **"Node Settings"** in the chat header -> paste the URL!
-3. *(Optional)* Add it to your Vercel project environment variables as `VITE_TEJAPRIYAN_API_URL` so all visitors worldwide connect to your PC by default!
+👉 **[tejapriyan.github.io/tejapriyan-ai-model](https://tejapriyan.github.io/tejapriyan-ai-model)**
 
----
+The built-in intelligence works instantly without any setup. You can ask questions, do math, get code, and more.
 
-## 🌟 What is Tejapriyan?
+### Option 2: Run the Full AI Model on Your Computer
 
-Tejapriyan is an 8-billion parameter language model built on top of **Qwen3-8B** open weights through a two-stage training methodology:
+For the complete AI experience with the full 8B parameter model:
 
-1. **Supervised Identity Layer (SFT)**: Unlike models that rely on fragile system prompts, Tejapriyan's identity, creator attribution (**Teja Priyan**), and personality are trained directly into the neural attention weights across hundreds of phrasing-varied pairs.
-2. **Specialty Policy with Execution Rewards (GRPO)**: Group Relative Policy Optimization trained against live SQLite execution environments. Correct query results receive `+1.0`, incorrect results receive `+0.1`, and SQL syntax errors receive `-1.0`. The model autonomously generates `<think>` schema reasoning tags before generating queries.
-3. **Optimized Local Inference**: Quantized to Q4_K_M GGUF (4.7 GB) using `llama.cpp` for instant, private offline execution on consumer hardware with zero telemetry.
+1. **Install Ollama** (free): [ollama.com](https://ollama.com)
+2. **Download Tejapriyan** — open a terminal and run:
+   ```bash
+   ollama run tejapriyan
+   ```
+3. **Connect to the website** — start Ollama with browser access enabled:
+   ```powershell
+   $env:OLLAMA_ORIGINS="*" ; ollama serve
+   ```
+4. Open the website — it will automatically detect your local model and switch to **"Local Ollama Active"** mode!
 
----
+### Option 3: Share Your Model with the World
 
-## 💻 Interactive Showcase Web Application
+Want your friends or visitors to chat with the model running on your computer?
 
-This repository contains the official showcase website featuring:
-
-- **Interactive Multi-Dataset SQL Sandbox**: Run real queries in an in-browser SQLite WASM engine across 3 switchable databases:
-  - 🎓 `University (Spider)` (departments, instructors, courses, students, enrollments)
-  - 🎵 `Music Store` (artists, albums, tracks, genres)
-  - 📚 `Public Library` (authors, books, members, active loans)
-- **Live Editable Query Box**: Edit any query, write custom SQL, and execute live against the database with `Ctrl + Enter`.
-- **Multi-Tier AI Chatbot**:
-  - **Local Visitor GPU**: Streams directly from `http://localhost:11434` when the visitor runs Ollama locally.
-  - **Creator Live Host PC Node**: Streams directly from your PC to visitors across the world via secure tunnel.
-  - **Built-in Standalone Intelligence**: Instant client-side reasoning engine covering arithmetic, SQL queries, code explanations, and developer attribution with zero external API dependencies.
-- **Phase 7 Verified Benchmark Receipts**:
-  - Tested on 26 held-out tasks against live SQLite databases:
-    | Model | Held-Out Exec Accuracy (n=26) | Syntax Errors |
-    |---|:---:|:---:|
-    | `qwen3-8b / base` | 42.3% | Conversational output crashes SQLite |
-    | **`tejapriyan (ours)`** | **57.7%** | **0.0% (100% valid executable SQL)** |
-- **Official Model Card**: Full technical specs, lineage, and licensing attribution.
+1. Double-click **`share-live-model.bat`** (included in this repo)
+2. Copy the tunnel URL printed in your terminal (e.g. `https://xxxx.trycloudflare.com`)
+3. On the website, click **"Node Settings"** → paste the URL → click **"Test"**
+4. Anyone who visits the website can now chat with your local model!
 
 ---
 
-## 🛠️ Local Development
+## ✨ Features
 
-### Prerequisites
-* Node.js 18+
-* npm or pnpm
+| Feature | Description |
+|---|---|
+| 🤖 **AI Chatbot** | Ask anything — math, code, SQL, general knowledge |
+| 📋 **Copy Code** | One-click copy button on all code blocks |
+| ▶️ **Live Preview** | Run HTML code directly in the browser |
+| 📅 **Real-time Info** | Knows today's date and current time |
+| 🌙 **Dark & Light Mode** | Beautiful theme toggle |
+| 🧪 **SQL Sandbox** | Write and run SQL queries in-browser |
+| 📊 **Benchmark Results** | See real test results comparing models |
+| 🔒 **100% Private** | No data is sent to any external server |
 
-### Setup
+---
+
+## 🛠️ For Developers
+
+### Run Locally
 
 ```bash
 # Clone the repository
@@ -96,33 +85,47 @@ cd tejapriyan-ai-model
 # Install dependencies
 npm install
 
-# Start local dev server
+# Start dev server
 npm run dev
 ```
 
 Visit `http://localhost:5173` in your browser.
 
-### Production Build
+### Build for Production
 
 ```bash
 npm run build
 ```
-Creates an optimized, single-file production bundle in `dist/index.html`.
+
+### Deploy to Vercel (Free)
+
+1. Push to GitHub
+2. Go to [vercel.com](https://vercel.com) → Import your repo
+3. Click **Deploy** — done in 30 seconds!
+
+Optional: Set `VITE_TEJAPRIYAN_API_URL` in Vercel environment variables to your tunnel URL so all visitors connect to your model by default.
 
 ---
 
-## 🚀 Deploying to Vercel (Instant & Free)
+## 🧠 About the Model
 
-1. Push this repository to your GitHub account.
-2. Go to [vercel.com](https://vercel.com) and log in with GitHub.
-3. Click **"Add New Project"** and select **`tejapriyan-ai-model`**.
-4. *(Optional)* In Environment Variables, set `VITE_TEJAPRIYAN_API_URL` to your live Cloudflare tunnel URL if you want everyone to route to your PC model.
-5. Click **Deploy**! (Vercel deploys in ~30 seconds with a free `.vercel.app` domain).
+Tejapriyan is an 8-billion parameter AI model built on **Qwen3-8B** open weights:
+
+- **Identity Training (SFT)**: The model knows who it is and who created it — baked directly into the neural weights, not just a system prompt
+- **SQL Reasoning (GRPO)**: Trained with live database execution rewards to generate accurate, executable SQL queries
+- **Compact & Fast**: Quantized to 4.7 GB (Q4_K_M GGUF) — runs on most laptops
+
+### Download Weights
+
+| Format | Size | Link |
+|---|---|---|
+| Safetensors (Full) | ~16 GB | [Hugging Face](https://huggingface.co/teja161615/Tejapriyan-8B) |
+| GGUF (Q4_K_M) | 4.7 GB | [Hugging Face](https://huggingface.co/teja161615/Tejapriyan-8B-GGUF) |
 
 ---
 
-## 📜 License & Lineage
+## 📜 License
 
-* **Base Model**: Qwen3-8B by the Qwen team (Alibaba Cloud), licensed under [Apache-2.0](https://opensource.org/licenses/Apache-2.0).
-* **Fine-Tuning & Model Release**: Teja Priyan.
-* **Website & Showcase**: Apache-2.0.
+- **Base Model**: Qwen3-8B by Alibaba Cloud — [Apache-2.0](https://opensource.org/licenses/Apache-2.0)
+- **Fine-Tuning & Weights**: Teja Priyan
+- **Website & Code**: Apache-2.0

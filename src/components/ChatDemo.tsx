@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Laptop,
   Loader2,
+  Play,
   Radio,
   RotateCcw,
   Settings,
@@ -23,17 +24,399 @@ import { getAssistantResponse } from "@/utils/aiResponder";
 type Msg = { role: "user" | "bot"; text: string; done: boolean };
 
 const SUGGESTIONS = [
-  "What is 8 plus 7?",
+  "What is 6 plus 7?",
+  "What is today's date?",
   "Who is Teja Priyan?",
+  "Tell me a joke",
+  "What is Python?",
   "Write an SQL query for top salaries",
-  "Difference between INNER and LEFT JOIN",
-  "How can I run you on my computer?",
 ];
 
 // Default fallback host from environment variable (Vercel)
 const DEFAULT_HOST = (import.meta.env.VITE_TEJAPRIYAN_API_URL as string | undefined) || "";
 
-function FormattedMessage({ text }: { text: string }) {
+/* ─── Interactive Code Playground (Editor + Live Output) ─── */
+function CodePlayground({
+  initialCode,
+  lang,
+  onClose,
+}: {
+  initialCode: string;
+  lang: string;
+  onClose: () => void;
+}) {
+  const [editableCode, setEditableCode] = useState(initialCode);
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [runCount, setRunCount] = useState(0);
+
+  // Build a full HTML document from the code, injecting console capture
+  const buildDoc = useCallback(
+    (code: string) => {
+      // Console capture script — intercepts console.log/warn/error and posts them to parent
+      const consoleCapture = `
+<script>
+(function(){
+  const origLog = console.log;
+  const origWarn = console.warn;
+  const origError = console.error;
+  function send(type, args) {
+    try {
+      const msg = Array.from(args).map(a => {
+        if (typeof a === 'object') try { return JSON.stringify(a, null, 2); } catch(e) { return String(a); }
+        return String(a);
+      }).join(' ');
+      window.parent.postMessage({ type: 'console', level: type, message: msg }, '*');
+    } catch(e) {}
+  }
+  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
+  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
+  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
+  window.onerror = function(msg, src, line, col, err) {
+    send('error', [msg + ' (line ' + line + ')']);
+  };
+})();
+<\/script>`;
+
+      if (lang === "javascript" || lang === "js") {
+        return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:system-ui,-apple-system,sans-serif;padding:20px;margin:0;background:#fff;color:#1a1a1a;}</style>
+${consoleCapture}
+</head><body><script>${code}<\/script></body></html>`;
+      }
+
+      if (lang === "css") {
+        return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>${code}</style>
+${consoleCapture}
+</head><body>
+<div class="demo"><h2>CSS Preview</h2><p>This is a paragraph to demonstrate your CSS styles.</p>
+<button>Sample Button</button><a href="#">Sample Link</a>
+<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></div>
+</body></html>`;
+      }
+
+      // HTML (full or partial)
+      if (
+        code.includes("<html") ||
+        code.includes("<!DOCTYPE") ||
+        code.includes("<!doctype")
+      ) {
+        // Inject console capture into existing HTML
+        return code.replace(/<head[^>]*>/i, (match) => match + consoleCapture);
+      }
+
+      // Partial HTML snippet — wrap in a document
+      return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:system-ui,-apple-system,sans-serif;padding:20px;margin:0;background:#fff;color:#1a1a1a;}</style>
+${consoleCapture}
+</head><body>${code}</body></html>`;
+    },
+    [lang]
+  );
+
+  // Listen for console messages from iframe
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data && e.data.type === "console") {
+        const prefix =
+          e.data.level === "error"
+            ? "❌ "
+            : e.data.level === "warn"
+            ? "⚠️ "
+            : "› ";
+        setConsoleLogs((prev) => [...prev.slice(-50), prefix + e.data.message]);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const handleRun = () => {
+    setConsoleLogs([]);
+    setRunCount((c) => c + 1);
+  };
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  const srcDoc = buildDoc(editableCode);
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 md:p-6">
+      <div className="relative w-full max-w-5xl h-[85vh] rounded-xl border border-line bg-panel shadow-2xl overflow-hidden flex flex-col">
+        {/* ─── Header ─── */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-line bg-raise shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-[12px] font-mono font-semibold text-amber">
+              <Play size={12} />
+              <span>Code Playground</span>
+            </div>
+            <span className="text-[9px] font-mono text-faint uppercase tracking-wider px-1.5 py-0.5 rounded bg-line/50">
+              {lang || "html"} • Editable • Interactive
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRun}
+              className="flex items-center gap-1.5 rounded-md bg-mint/15 border border-mint/40 px-3 py-1 text-[11px] font-mono font-semibold text-mint hover:bg-mint hover:text-white transition-colors"
+            >
+              <Play size={11} />
+              Run
+            </button>
+            <button
+              onClick={onClose}
+              className="text-mute hover:text-ink p-1 rounded hover:bg-line/30 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Split Pane: Editor | Output ─── */}
+        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+          {/* Left: Code Editor */}
+          <div className="md:w-1/2 w-full flex flex-col border-b md:border-b-0 md:border-r border-line min-h-0">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-line/50 bg-[var(--code-block-header)] shrink-0">
+              <span className="text-[9px] uppercase tracking-wider text-mute font-mono font-medium">
+                ✏️ Editor — {lang || "html"}
+              </span>
+              <span className="text-[8px] text-faint font-mono">
+                Edit code below, then click Run
+              </span>
+            </div>
+            <textarea
+              value={editableCode}
+              onChange={(e) => setEditableCode(e.target.value)}
+              spellCheck={false}
+              className="flex-1 w-full resize-none bg-[var(--code-block-bg)] text-[var(--code-block-text)] font-mono text-[12px] leading-relaxed p-3 outline-none min-h-0 overflow-auto"
+              style={{ tabSize: 2 }}
+              onKeyDown={(e) => {
+                // Tab key inserts spaces instead of switching focus
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  const start = e.currentTarget.selectionStart;
+                  const end = e.currentTarget.selectionEnd;
+                  const val = e.currentTarget.value;
+                  setEditableCode(val.substring(0, start) + "  " + val.substring(end));
+                  // Restore cursor position after React re-render
+                  requestAnimationFrame(() => {
+                    e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 2;
+                  });
+                }
+                // Ctrl+Enter to run
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  handleRun();
+                }
+              }}
+            />
+          </div>
+
+          {/* Right: Output */}
+          <div className="md:w-1/2 w-full flex flex-col min-h-0">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-line/50 bg-raise shrink-0">
+              <span className="text-[9px] uppercase tracking-wider text-mute font-mono font-medium">
+                ▶ Output
+              </span>
+              <span className="text-[8px] text-faint font-mono">
+                Ctrl+Enter to run
+              </span>
+            </div>
+            {/* Live interactive iframe */}
+            <div className="flex-1 bg-white min-h-0 overflow-hidden">
+              <iframe
+                ref={iframeRef}
+                key={runCount}
+                srcDoc={srcDoc}
+                title="Code Output"
+                sandbox="allow-scripts allow-modals allow-forms allow-popups allow-same-origin"
+                className="w-full h-full border-0"
+              />
+            </div>
+
+            {/* Console Output */}
+            {consoleLogs.length > 0 && (
+              <div className="border-t border-line bg-[var(--code-block-bg)] max-h-[120px] overflow-y-auto shrink-0">
+                <div className="flex items-center justify-between px-3 py-1 border-b border-line/30">
+                  <span className="text-[8px] uppercase tracking-wider text-faint font-mono">
+                    Console
+                  </span>
+                  <button
+                    onClick={() => setConsoleLogs([])}
+                    className="text-[8px] text-faint hover:text-mute font-mono"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="px-3 py-1.5 space-y-0.5">
+                  {consoleLogs.map((log, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "font-mono text-[10px] leading-relaxed whitespace-pre-wrap",
+                        log.startsWith("❌")
+                          ? "text-crimson"
+                          : log.startsWith("⚠️")
+                          ? "text-amber"
+                          : "text-[var(--code-block-text)]"
+                      )}
+                    >
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Code Block with Copy + Run buttons ─── */
+function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const isRunnable =
+    lang === "html" ||
+    lang === "htm" ||
+    lang === "css" ||
+    lang === "javascript" ||
+    lang === "js" ||
+    (lang === "" && /<\w+[^>]*>/.test(code));
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <>
+      <div className="code-block-container group/code my-2 overflow-x-auto rounded-lg border border-line relative">
+        {/* Header bar with language + buttons */}
+        <div className="flex items-center justify-between px-2.5 py-1 border-b border-line/50 bg-[var(--code-block-header)]">
+          {lang && (
+            <span className="text-[9px] uppercase tracking-wider text-mute font-sans font-medium">
+              {lang}
+            </span>
+          )}
+          {!lang && <span />}
+          <div className="flex items-center gap-1">
+            {isRunnable && (
+              <button
+                onClick={() => setShowPreview(true)}
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono text-mute hover:text-mint hover:bg-mint/10 transition-colors"
+                title="Run this code in a live playground"
+              >
+                <Play size={9} />
+                <span>Run</span>
+              </button>
+            )}
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono text-mute hover:text-amber hover:bg-amber/10 transition-colors"
+              title="Copy code to clipboard"
+            >
+              {copied ? (
+                <>
+                  <Check size={9} className="text-mint" />
+                  <span className="text-mint">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={9} />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+        {/* Code content */}
+        <div className="p-2.5 bg-[var(--code-block-bg)]">
+          <pre className="font-mono text-[11px] text-[var(--code-block-text)] whitespace-pre leading-normal overflow-x-auto">
+            {code}
+          </pre>
+        </div>
+      </div>
+
+      {/* Interactive Code Playground Modal */}
+      {showPreview && (
+        <CodePlayground
+          initialCode={code}
+          lang={lang}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/* ─── Formatted Text (with code block extraction) ─── */
+const FormattedText = memo(function FormattedText({ content }: { content: string }) {
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-1.5 leading-relaxed">
+      {parts.map((part, idx) => {
+        if (part.startsWith("```")) {
+          const lines = part.slice(3, -3).trim().split("\n");
+          const firstLine = lines[0].trim();
+          const isLang = /^[a-z]+$/i.test(firstLine);
+          const lang = isLang ? firstLine.toLowerCase() : "";
+          const code = (isLang ? lines.slice(1) : lines).join("\n");
+          return <CodeBlock key={idx} lang={lang} code={code} />;
+        }
+
+        // Inline markdown: **bold**, `code`, tables
+        const boldParts = part.split(/(\*\*.*?\*\*)/g);
+        return (
+          <span key={idx} className="whitespace-pre-wrap">
+            {boldParts.map((b, bIdx) => {
+              if (b.startsWith("**") && b.endsWith("**")) {
+                return (
+                  <strong key={bIdx} className="font-semibold text-ink">
+                    {b.slice(2, -2)}
+                  </strong>
+                );
+              }
+              // Inline code: `text`
+              const inlineParts = b.split(/(`[^`]+`)/g);
+              return inlineParts.map((ip, ipIdx) => {
+                if (ip.startsWith("`") && ip.endsWith("`")) {
+                  return (
+                    <code
+                      key={`${bIdx}-${ipIdx}`}
+                      className="rounded bg-[var(--code-inline-bg)] px-1 py-0.5 font-mono text-[11px] text-[var(--code-inline-text)]"
+                    >
+                      {ip.slice(1, -1)}
+                    </code>
+                  );
+                }
+                return <span key={`${bIdx}-${ipIdx}`}>{ip}</span>;
+              });
+            })}
+          </span>
+        );
+      })}
+    </div>
+  );
+});
+
+/* ─── Full message formatter (handles <think> reasoning blocks) ─── */
+const FormattedMessage = memo(function FormattedMessage({ text }: { text: string }) {
   const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/);
 
   if (thinkMatch) {
@@ -53,44 +436,38 @@ function FormattedMessage({ text }: { text: string }) {
   }
 
   return <FormattedText content={text} />;
-}
+});
 
-function FormattedText({ content }: { content: string }) {
-  const parts = content.split(/(```[\s\S]*?```)/g);
-
+/* ─── Bot message copy (full message) ─── */
+function MessageCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   return (
-    <div className="space-y-1.5 leading-relaxed">
-      {parts.map((part, idx) => {
-        if (part.startsWith("```")) {
-          const lines = part.slice(3, -3).trim().split("\n");
-          const firstLine = lines[0].trim();
-          const isLang = /^[a-z]+$/i.test(firstLine);
-          const lang = isLang ? firstLine : "";
-          const code = (isLang ? lines.slice(1) : lines).join("\n");
-          return (
-            <div key={idx} className="my-2 overflow-x-auto rounded border border-line bg-[#090806] p-2.5 font-mono text-[11px] text-amber/95">
-              {lang && <div className="text-[9px] uppercase tracking-wider text-mute mb-1 font-sans">{lang}</div>}
-              <pre className="whitespace-pre leading-normal">{code}</pre>
-            </div>
-          );
-        }
-
-        const boldParts = part.split(/(\*\*.*?\*\*)/g);
-        return (
-          <span key={idx} className="whitespace-pre-wrap">
-            {boldParts.map((b, bIdx) => {
-              if (b.startsWith("**") && b.endsWith("**")) {
-                return <strong key={bIdx} className="font-semibold text-ink">{b.slice(2, -2)}</strong>;
-              }
-              return b;
-            })}
-          </span>
-        );
-      })}
-    </div>
+    <button
+      onClick={handleCopy}
+      className="mt-1.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono text-faint hover:text-amber hover:bg-amber/10 transition-colors opacity-0 group-hover/msg:opacity-100"
+      title="Copy full response"
+    >
+      {copied ? (
+        <>
+          <Check size={9} className="text-mint" />
+          <span className="text-mint">Copied!</span>
+        </>
+      ) : (
+        <>
+          <Copy size={9} />
+          <span>Copy</span>
+        </>
+      )}
+    </button>
   );
 }
 
+/* ─── Main ChatDemo Component ─── */
 export default function ChatDemo() {
   const [messages, setMessages] = useState<Msg[]>([
     {
@@ -116,10 +493,10 @@ export default function ChatDemo() {
   const [copiedCors, setCopiedCors] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   // Check health of local Ollama and remote host
-  const checkConnections = async () => {
+  const checkConnections = useCallback(async () => {
     setChecking(true);
     let localOk = false;
     let remoteOk = false;
@@ -172,22 +549,26 @@ export default function ChatDemo() {
     }
 
     setChecking(false);
-  };
+  }, [hostUrl]);
 
   useEffect(() => {
     checkConnections();
-    const interval = setInterval(checkConnections, 20000);
+    // Reduced polling to 30s for smoother performance
+    const interval = setInterval(checkConnections, 30000);
     return () => clearInterval(interval);
-  }, [hostUrl]);
+  }, [checkConnections]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streaming]);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    },
+    []
+  );
 
   const handleSaveHost = (newUrl: string) => {
     const trimmed = newUrl.trim();
@@ -196,7 +577,7 @@ export default function ChatDemo() {
   };
 
   const resetChat = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setStreaming(false);
     setMessages([
       {
@@ -310,10 +691,13 @@ export default function ChatDemo() {
     }
 
     // Priority 3: Built-in Standalone Intelligence Engine (Always online, 0 external dependencies)
+    // Uses requestAnimationFrame for smoother character-by-character streaming
     const reply = getAssistantResponse(messages, q);
     let i = 0;
-    timerRef.current = setInterval(() => {
-      i += 4;
+    const charsPerFrame = 3;
+
+    const animateStream = () => {
+      i += charsPerFrame;
       const slice = reply.slice(0, i);
       const finished = i >= reply.length;
       setMessages((prev) => {
@@ -322,10 +706,13 @@ export default function ChatDemo() {
         return copy;
       });
       if (finished) {
-        if (timerRef.current) clearInterval(timerRef.current);
+        rafRef.current = null;
         setStreaming(false);
+      } else {
+        rafRef.current = requestAnimationFrame(animateStream);
       }
-    }, 12);
+    };
+    rafRef.current = requestAnimationFrame(animateStream);
   };
 
   const copyCorsCmd = () => {
@@ -430,16 +817,25 @@ export default function ChatDemo() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             {/* Mode 1: Local PC */}
-            <div className={cn(
-              "rounded-lg border p-2.5 transition-colors",
-              localAvailable ? "border-mint/50 bg-mint/5" : "border-line bg-panel/50"
-            )}>
+            <div
+              className={cn(
+                "rounded-lg border p-2.5 transition-colors",
+                localAvailable ? "border-mint/50 bg-mint/5" : "border-line bg-panel/50"
+              )}
+            >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-semibold text-ink flex items-center gap-1.5">
                   <Laptop size={12} className={localAvailable ? "text-mint" : "text-faint"} />
                   Visitor's Local PC
                 </span>
-                <span className={cn("font-mono text-[9px] px-1.5 py-0.5 rounded", localAvailable ? "bg-mint/20 text-mint font-semibold" : "bg-panel text-faint")}>
+                <span
+                  className={cn(
+                    "font-mono text-[9px] px-1.5 py-0.5 rounded",
+                    localAvailable
+                      ? "bg-mint/20 text-mint font-semibold"
+                      : "bg-panel text-faint"
+                  )}
+                >
                   {localAvailable ? "CONNECTED" : "OFFLINE"}
                 </span>
               </div>
@@ -451,22 +847,35 @@ export default function ChatDemo() {
                 className="flex items-center gap-1 text-[10px] font-mono text-faint hover:text-amber bg-raise rounded border border-line px-1.5 py-0.5"
                 title="Copy CORS command to enable browser access"
               >
-                {copiedCors ? <Check size={10} className="text-mint" /> : <Copy size={10} />}
+                {copiedCors ? (
+                  <Check size={10} className="text-mint" />
+                ) : (
+                  <Copy size={10} />
+                )}
                 <span>{copiedCors ? "Copied Command!" : "Copy CORS Start Command"}</span>
               </button>
             </div>
 
             {/* Mode 2: Remote Host PC Tunnel */}
-            <div className={cn(
-              "rounded-lg border p-2.5 transition-colors",
-              remoteAvailable ? "border-mint/50 bg-mint/5" : "border-line bg-panel/50"
-            )}>
+            <div
+              className={cn(
+                "rounded-lg border p-2.5 transition-colors",
+                remoteAvailable ? "border-mint/50 bg-mint/5" : "border-line bg-panel/50"
+              )}
+            >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-semibold text-ink flex items-center gap-1.5">
                   <Globe size={12} className={remoteAvailable ? "text-mint" : "text-faint"} />
                   Teja's Live Host PC (World Node)
                 </span>
-                <span className={cn("font-mono text-[9px] px-1.5 py-0.5 rounded", remoteAvailable ? "bg-mint/20 text-mint font-semibold" : "bg-panel text-faint")}>
+                <span
+                  className={cn(
+                    "font-mono text-[9px] px-1.5 py-0.5 rounded",
+                    remoteAvailable
+                      ? "bg-mint/20 text-mint font-semibold"
+                      : "bg-panel text-faint"
+                  )}
+                >
                   {remoteAvailable ? "ONLINE" : "STANDBY"}
                 </span>
               </div>
@@ -493,7 +902,16 @@ export default function ChatDemo() {
           </div>
 
           <div className="flex items-center justify-between border-t border-line/50 pt-2 text-[10px] text-faint font-mono">
-            <span>Current Route: <strong className="text-amber">{activeMode === "local" ? "Local PC (localhost:11434)" : activeMode === "remote" ? "Remote Host Tunnel" : "Built-in Intelligence Engine"}</strong></span>
+            <span>
+              Current Route:{" "}
+              <strong className="text-amber">
+                {activeMode === "local"
+                  ? "Local PC (localhost:11434)"
+                  : activeMode === "remote"
+                  ? "Remote Host Tunnel"
+                  : "Built-in Intelligence Engine"}
+              </strong>
+            </span>
             <span>Zero external cloud APIs</span>
           </div>
         </div>
@@ -505,7 +923,7 @@ export default function ChatDemo() {
           <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
             <div
               className={cn(
-                "max-w-[88%] rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed",
+                "group/msg max-w-[88%] rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed",
                 m.role === "user"
                   ? "border border-amber/30 bg-amber/[0.08] text-ink"
                   : "border border-line/70 bg-raise text-mute"
@@ -517,7 +935,11 @@ export default function ChatDemo() {
                 </span>
               )}
               <FormattedMessage text={m.text} />
-              {!m.done && <span className="ml-0.5 inline-block h-3 w-[5px] animate-blink bg-amber align-middle" />}
+              {!m.done && (
+                <span className="ml-0.5 inline-block h-3 w-[5px] animate-blink bg-amber align-middle" />
+              )}
+              {/* Copy full message button for bot responses */}
+              {m.role === "bot" && m.done && m.text && <MessageCopyButton text={m.text} />}
             </div>
           </div>
         ))}
