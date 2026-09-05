@@ -36,6 +36,63 @@ const SUGGESTIONS = [
 const DEFAULT_HOST = (import.meta.env.VITE_TEJAPRIYAN_API_URL as string | undefined) || "";
 
 /* ─── Interactive Code Playground (Editor + Live Output) ─── */
+function detectCodeType(
+  code: string,
+  fallbackLang: string
+): "javascript" | "html" | "python" | "css" {
+  const trimmed = code.trim();
+  if (!trimmed) return "html";
+
+  // Check for HTML tags
+  const hasHtmlTags =
+    /<\s*(html|!doctype|head|body|div|span|p|h[1-6]|button|form|input|canvas|table|svg|section|header|nav|style|script)\b/i.test(
+      trimmed
+    );
+
+  // Check for Python syntax
+  const hasPython =
+    /(^|\n)\s*(def\s+\w+\s*\(|import\s+\w+|from\s+\w+\s+import|print\s*\(|input\s*\(|elif\s+|if\s+__name__\s*==)/.test(
+      trimmed
+    );
+
+  // Check for JavaScript syntax
+  const hasJs =
+    /(^|\n)\s*(var\s+|let\s+|const\s+|function\s*\(|function\s+\w+|console\.|alert\s*\(|prompt\s*\(|document\.|window\.|addEventListener|Math\.|setTimeout|setInterval|class\s+\w+)/.test(
+      trimmed
+    ) ||
+    /(=>|\.forEach\(|\.map\(|\.getElementById\(|\.querySelector\(|parseInt\(|parseFloat\()/.test(
+      trimmed
+    );
+
+  const fb = (fallbackLang || "").toLowerCase();
+  if (fb === "python" || fb === "py") {
+    if (!hasHtmlTags) return "python";
+  }
+  if (
+    fb === "javascript" ||
+    fb === "js" ||
+    fb === "ts" ||
+    fb === "typescript"
+  ) {
+    if (!hasHtmlTags) return "javascript";
+  }
+  if (fb === "css") return "css";
+
+  if (hasPython && !hasHtmlTags) return "python";
+  if (hasHtmlTags) return "html";
+  if (hasJs) return "javascript";
+
+  // If CSS rules
+  if (/^(\s*[\.\#]?[a-zA-Z0-9_\-:]+\s*\{[^}]*\})+/m.test(trimmed)) return "css";
+
+  // Default to JavaScript if it has assignments or semicolons
+  if (trimmed.includes(";") || trimmed.includes("=") || trimmed.includes("{")) {
+    return "javascript";
+  }
+
+  return "html";
+}
+
 function CodePlayground({
   initialCode,
   lang,
@@ -46,13 +103,20 @@ function CodePlayground({
   onClose: () => void;
 }) {
   const [editableCode, setEditableCode] = useState(initialCode);
+  const [activeMode, setActiveMode] = useState<
+    "auto" | "javascript" | "html" | "python" | "css"
+  >("auto");
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [runCount, setRunCount] = useState(0);
 
+  // Determine effective language
+  const detectedLang = detectCodeType(editableCode, lang);
+  const effectiveLang = activeMode === "auto" ? detectedLang : activeMode;
+
   // Build a full HTML document from the code, injecting console capture
   const buildDoc = useCallback(
-    (code: string) => {
+    (code: string, currentLang: string) => {
       // Console capture script — intercepts console.log/warn/error and posts them to parent
       const consoleCapture = `
 <script>
@@ -73,49 +137,267 @@ function CodePlayground({
   console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
   console.error = function() { send('error', arguments); origError.apply(console, arguments); };
   window.onerror = function(msg, src, line, col, err) {
-    send('error', [msg + ' (line ' + line + ')']);
+    send('error', [msg + (line ? ' (line ' + line + ')' : '')]);
   };
 })();
 <\/script>`;
 
-      if (lang === "javascript" || lang === "js") {
+      // ─── 1. JAVASCRIPT EXECUTION ───
+      if (currentLang === "javascript") {
         return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font-family:system-ui,-apple-system,sans-serif;padding:20px;margin:0;background:#fff;color:#1a1a1a;}</style>
-${consoleCapture}
-</head><body><script>${code}<\/script></body></html>`;
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+      margin: 0;
+      background: #ffffff;
+      color: #18181b;
+      line-height: 1.5;
+    }
+    #app, #root, #game, #canvas { margin-bottom: 12px; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      background: #ecfdf5;
+      color: #059669;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      border-radius: 9999px;
+      border: 1px solid #a7f3d0;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+    .runtime-err {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      color: #dc2626;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    button {
+      cursor: pointer;
+      padding: 6px 14px;
+      background: #f59e0b;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.9; }
+    input {
+      padding: 6px 10px;
+      border: 1px solid #d4d4d8;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-right: 6px;
+    }
+  </style>
+  ${consoleCapture}
+</head>
+<body>
+  <div class="status-pill">⚡ JavaScript Runner Active</div>
+  <div id="app"></div>
+  <div id="root"></div>
+  <div id="game"></div>
+  <script>
+    (function() {
+      try {
+        ${code}
+      } catch (err) {
+        console.error(err.message || String(err));
+        var errBox = document.createElement('div');
+        errBox.className = 'runtime-err';
+        errBox.innerHTML = '<strong>❌ Script Error:</strong> ' + (err.message || String(err));
+        document.body.appendChild(errBox);
+      }
+    })();
+  <\/script>
+</body>
+</html>`;
       }
 
-      if (lang === "css") {
+      // ─── 2. PYTHON EXECUTION (SKULPT IN-BROWSER) ───
+      if (currentLang === "python") {
         return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>${code}</style>
-${consoleCapture}
-</head><body>
-<div class="demo"><h2>CSS Preview</h2><p>This is a paragraph to demonstrate your CSS styles.</p>
-<button>Sample Button</button><a href="#">Sample Link</a>
-<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></div>
-</body></html>`;
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"><\/script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      padding: 16px;
+      margin: 0;
+      background: #ffffff;
+      color: #18181b;
+    }
+    .py-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: #4338ca;
+      background: #e0e7ff;
+      border: 1px solid #c7d2fe;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      margin-bottom: 12px;
+    }
+    #py-output {
+      background: #09090b;
+      color: #f4f4f5;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 90px;
+      border: 1px solid #27272a;
+    }
+    .py-err { color: #f87171; font-weight: bold; }
+  </style>
+  ${consoleCapture}
+</head>
+<body>
+  <div class="py-status">🐍 Python Live Runner</div>
+  <pre id="py-output"></pre>
+  <script>
+    var outBox = document.getElementById("py-output");
+    function outf(text) {
+      outBox.textContent += text;
+      console.log(text.replace(/\\n$/, ''));
+    }
+    function builtinRead(x) {
+      if (typeof Sk === 'undefined' || Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) {
+        throw "File not found: '" + x + "'";
+      }
+      return Sk.builtinFiles["files"][x];
+    }
+    if (typeof Sk !== 'undefined') {
+      Sk.configure({
+        output: outf,
+        read: builtinRead,
+        inputfun: function(prompt) {
+          return window.prompt(prompt || "Enter Python input:");
+        },
+        inputfunTakesPrompt: true
+      });
+      Sk.misceval.asyncToPromise(function() {
+        return Sk.importMainWithBody("<stdin>", false, ${JSON.stringify(code)}, true);
+      }).catch(function(err) {
+        outBox.innerHTML += '<span class="py-err">\\n❌ Python Error: ' + err.toString() + '</span>';
+        console.error(err.toString());
+      });
+    } else {
+      outBox.textContent = "Connecting to Python engine...\\nIf running offline, connect to internet for Skulpt Python engine.";
+    }
+  <\/script>
+</body>
+</html>`;
       }
 
-      // HTML (full or partial)
+      // ─── 3. CSS PREVIEW ───
+      if (currentLang === "css") {
+        return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; margin: 0; background: #fff; color: #1a1a1a; }
+    .demo-box { max-width: 600px; margin: 0 auto; }
+    ${code}
+  </style>
+  ${consoleCapture}
+</head>
+<body>
+  <div class="demo-box">
+    <h2>CSS Live Preview</h2>
+    <p>This is a paragraph demonstrating your custom CSS styles in real time.</p>
+    <button>Sample Button</button>
+    <a href="#" style="margin-left: 10px;">Sample Link</a>
+    <div style="margin-top: 16px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h4>Card Container</h4>
+      <p>Inner card content with custom styling applied above.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      }
+
+      // ─── 4. HTML (FULL OR PARTIAL) ───
       if (
         code.includes("<html") ||
         code.includes("<!DOCTYPE") ||
         code.includes("<!doctype")
       ) {
-        // Inject console capture into existing HTML
-        return code.replace(/<head[^>]*>/i, (match) => match + consoleCapture);
+        if (/<head[^>]*>/i.test(code)) {
+          return code.replace(/<head[^>]*>/i, (match) => match + consoleCapture);
+        }
+        return consoleCapture + code;
       }
 
-      // Partial HTML snippet — wrap in a document
+      // Partial HTML snippet — wrap in a clean document
       return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font-family:system-ui,-apple-system,sans-serif;padding:20px;margin:0;background:#fff;color:#1a1a1a;}</style>
-${consoleCapture}
-</head><body>${code}</body></html>`;
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+      margin: 0;
+      background: #ffffff;
+      color: #18181b;
+      line-height: 1.5;
+    }
+    button {
+      cursor: pointer;
+      padding: 6px 14px;
+      background: #f59e0b;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    input {
+      padding: 6px 10px;
+      border: 1px solid #d4d4d8;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-right: 6px;
+    }
+  </style>
+  ${consoleCapture}
+</head>
+<body>
+  ${code}
+</body>
+</html>`;
     },
-    [lang]
+    []
   );
 
   // Listen for console messages from iframe
@@ -140,6 +422,14 @@ ${consoleCapture}
     setRunCount((c) => c + 1);
   };
 
+  // Debounced auto-run on code edit so changing code gives immediate output
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setRunCount((c) => c + 1);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [editableCode, activeMode]);
+
   // Close on Escape key
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -149,33 +439,53 @@ ${consoleCapture}
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  const srcDoc = buildDoc(editableCode);
+  const srcDoc = buildDoc(editableCode, effectiveLang);
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 md:p-6">
       <div className="relative w-full max-w-5xl h-[85vh] rounded-xl border border-line bg-panel shadow-2xl overflow-hidden flex flex-col">
         {/* ─── Header ─── */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-line bg-raise shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-line bg-raise shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-[12px] font-mono font-semibold text-amber">
-              <Play size={12} />
+              <Play size={13} className="fill-amber" />
               <span>Code Playground</span>
             </div>
-            <span className="text-[9px] font-mono text-faint uppercase tracking-wider px-1.5 py-0.5 rounded bg-line/50">
-              {lang || "html"} • Editable • Interactive
-            </span>
+
+            {/* Mode selector dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-faint font-mono hidden sm:inline">
+                Mode:
+              </span>
+              <select
+                value={activeMode}
+                onChange={(e) => setActiveMode(e.target.value as any)}
+                className="rounded bg-panel border border-line px-2 py-0.5 text-[11px] font-mono text-ink outline-none cursor-pointer hover:border-amber/50 transition-colors"
+              >
+                <option value="auto">
+                  Auto-Detect ({effectiveLang.toUpperCase()})
+                </option>
+                <option value="javascript">JavaScript</option>
+                <option value="html">HTML / Web</option>
+                <option value="python">Python</option>
+                <option value="css">CSS</option>
+              </select>
+            </div>
           </div>
+
           <div className="flex items-center gap-2">
             <button
               onClick={handleRun}
-              className="flex items-center gap-1.5 rounded-md bg-mint/15 border border-mint/40 px-3 py-1 text-[11px] font-mono font-semibold text-mint hover:bg-mint hover:text-white transition-colors"
+              className="flex items-center gap-1.5 rounded-md bg-mint/15 border border-mint/40 px-3 py-1 text-[11px] font-mono font-semibold text-mint hover:bg-mint hover:text-white transition-all shadow-sm active:scale-95"
+              title="Re-run code (Ctrl+Enter)"
             >
-              <Play size={11} />
+              <Play size={11} className="fill-current" />
               Run
             </button>
             <button
               onClick={onClose}
               className="text-mute hover:text-ink p-1 rounded hover:bg-line/30 transition-colors"
+              title="Close (Esc)"
             >
               <X size={16} />
             </button>
@@ -187,11 +497,11 @@ ${consoleCapture}
           {/* Left: Code Editor */}
           <div className="md:w-1/2 w-full flex flex-col border-b md:border-b-0 md:border-r border-line min-h-0">
             <div className="flex items-center justify-between px-3 py-1.5 border-b border-line/50 bg-[var(--code-block-header)] shrink-0">
-              <span className="text-[9px] uppercase tracking-wider text-mute font-mono font-medium">
-                ✏️ Editor — {lang || "html"}
+              <span className="text-[10px] uppercase tracking-wider text-mute font-mono font-semibold">
+                ✏️ Editor — {effectiveLang.toUpperCase()}
               </span>
-              <span className="text-[8px] text-faint font-mono">
-                Edit code below, then click Run
+              <span className="text-[9px] text-faint font-mono">
+                Auto-runs on edit or press Ctrl+Enter
               </span>
             </div>
             <textarea
@@ -201,19 +511,21 @@ ${consoleCapture}
               className="flex-1 w-full resize-none bg-[var(--code-block-bg)] text-[var(--code-block-text)] font-mono text-[12px] leading-relaxed p-3 outline-none min-h-0 overflow-auto"
               style={{ tabSize: 2 }}
               onKeyDown={(e) => {
-                // Tab key inserts spaces instead of switching focus
+                // Tab key inserts 2 spaces
                 if (e.key === "Tab") {
                   e.preventDefault();
                   const start = e.currentTarget.selectionStart;
                   const end = e.currentTarget.selectionEnd;
                   const val = e.currentTarget.value;
-                  setEditableCode(val.substring(0, start) + "  " + val.substring(end));
-                  // Restore cursor position after React re-render
+                  setEditableCode(
+                    val.substring(0, start) + "  " + val.substring(end)
+                  );
                   requestAnimationFrame(() => {
-                    e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 2;
+                    e.currentTarget.selectionStart = e.currentTarget.selectionEnd =
+                      start + 2;
                   });
                 }
-                // Ctrl+Enter to run
+                // Ctrl+Enter or Cmd+Enter to run
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   handleRun();
@@ -225,35 +537,41 @@ ${consoleCapture}
           {/* Right: Output */}
           <div className="md:w-1/2 w-full flex flex-col min-h-0">
             <div className="flex items-center justify-between px-3 py-1.5 border-b border-line/50 bg-raise shrink-0">
-              <span className="text-[9px] uppercase tracking-wider text-mute font-mono font-medium">
-                ▶ Output
-              </span>
-              <span className="text-[8px] text-faint font-mono">
-                Ctrl+Enter to run
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-ink font-mono font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-mint animate-pulse" />
+                  ▶ Live Output
+                </span>
+                <span className="text-[9px] text-mute font-mono">
+                  ({effectiveLang})
+                </span>
+              </div>
+              <span className="text-[9px] text-faint font-mono">
+                Fully Interactive
               </span>
             </div>
-            {/* Live interactive iframe */}
+
+            {/* Live interactive iframe — no sandbox restriction so alert/prompt/games work */}
             <div className="flex-1 bg-white min-h-0 overflow-hidden">
               <iframe
                 ref={iframeRef}
                 key={runCount}
                 srcDoc={srcDoc}
                 title="Code Output"
-                sandbox="allow-scripts allow-modals allow-forms allow-popups allow-same-origin"
                 className="w-full h-full border-0"
               />
             </div>
 
-            {/* Console Output */}
+            {/* Console Output Panel */}
             {consoleLogs.length > 0 && (
-              <div className="border-t border-line bg-[var(--code-block-bg)] max-h-[120px] overflow-y-auto shrink-0">
-                <div className="flex items-center justify-between px-3 py-1 border-b border-line/30">
-                  <span className="text-[8px] uppercase tracking-wider text-faint font-mono">
-                    Console
+              <div className="border-t border-line bg-[var(--code-block-bg)] max-h-[130px] overflow-y-auto shrink-0">
+                <div className="flex items-center justify-between px-3 py-1 border-b border-line/30 bg-[var(--code-block-header)]">
+                  <span className="text-[9px] uppercase tracking-wider text-faint font-mono font-medium">
+                    Console Logs ({consoleLogs.length})
                   </span>
                   <button
                     onClick={() => setConsoleLogs([])}
-                    className="text-[8px] text-faint hover:text-mute font-mono"
+                    className="text-[9px] text-faint hover:text-mute font-mono"
                   >
                     Clear
                   </button>
@@ -284,18 +602,10 @@ ${consoleCapture}
   );
 }
 
-/* ─── Code Block with Copy + Run buttons ─── */
+/* ─── Code Block with Copy + Run buttons (Always present for ALL code) ─── */
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-
-  const isRunnable =
-    lang === "html" ||
-    lang === "htm" ||
-    lang === "css" ||
-    lang === "javascript" ||
-    lang === "js" ||
-    (lang === "" && /<\w+[^>]*>/.test(code));
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -305,39 +615,36 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
 
   return (
     <>
-      <div className="code-block-container group/code my-2 overflow-x-auto rounded-lg border border-line relative">
-        {/* Header bar with language + buttons */}
-        <div className="flex items-center justify-between px-2.5 py-1 border-b border-line/50 bg-[var(--code-block-header)]">
-          {lang && (
-            <span className="text-[9px] uppercase tracking-wider text-mute font-sans font-medium">
-              {lang}
-            </span>
-          )}
-          {!lang && <span />}
-          <div className="flex items-center gap-1">
-            {isRunnable && (
-              <button
-                onClick={() => setShowPreview(true)}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono text-mute hover:text-mint hover:bg-mint/10 transition-colors"
-                title="Run this code in a live playground"
-              >
-                <Play size={9} />
-                <span>Run</span>
-              </button>
-            )}
+      <div className="code-block-container group/code my-2.5 overflow-x-auto rounded-lg border border-line relative shadow-sm">
+        {/* Header bar with language + Run & Copy buttons for every code */}
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-line/50 bg-[var(--code-block-header)]">
+          <span className="text-[10px] uppercase tracking-wider text-mute font-mono font-semibold">
+            {lang || "code"}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {/* Run button — unconditionally rendered for EVERY code block */}
+            <button
+              onClick={() => setShowPreview(true)}
+              className="flex items-center gap-1 rounded bg-mint/10 border border-mint/30 px-2 py-0.5 text-[10px] font-mono font-medium text-mint hover:bg-mint hover:text-white transition-colors"
+              title="Run and interact with this code live"
+            >
+              <Play size={10} className="fill-current" />
+              <span>Run</span>
+            </button>
+            {/* Copy button — unconditionally rendered for EVERY code block */}
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono text-mute hover:text-amber hover:bg-amber/10 transition-colors"
+              className="flex items-center gap-1 rounded bg-amber/10 border border-amber/30 px-2 py-0.5 text-[10px] font-mono font-medium text-amber hover:bg-amber hover:text-[#0a0908] transition-colors"
               title="Copy code to clipboard"
             >
               {copied ? (
                 <>
-                  <Check size={9} className="text-mint" />
+                  <Check size={10} className="text-mint" />
                   <span className="text-mint">Copied!</span>
                 </>
               ) : (
                 <>
-                  <Copy size={9} />
+                  <Copy size={10} />
                   <span>Copy</span>
                 </>
               )}
@@ -345,8 +652,8 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           </div>
         </div>
         {/* Code content */}
-        <div className="p-2.5 bg-[var(--code-block-bg)]">
-          <pre className="font-mono text-[11px] text-[var(--code-block-text)] whitespace-pre leading-normal overflow-x-auto">
+        <div className="p-3 bg-[var(--code-block-bg)]">
+          <pre className="font-mono text-[11px] text-[var(--code-block-text)] whitespace-pre leading-relaxed overflow-x-auto">
             {code}
           </pre>
         </div>
@@ -589,12 +896,61 @@ export default function ChatDemo() {
   };
 
   const streamFromOllama = async (endpoint: string, promptHistory: Msg[]) => {
+    const now = new Date();
+    const dayNames = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    const dayName = dayNames[now.getDay()];
+    const monthName = monthNames[now.getMonth()];
+    const dateNum = now.getDate();
+    const yearNum = now.getFullYear();
+    const currentDateStr = `${dayName}, ${monthName} ${dateNum}, ${yearNum}`;
+    const currentTimeStr = now.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
     const apiMessages = promptHistory
       .filter((m) => m.text.trim())
-      .map((m) => ({
-        role: m.role === "bot" ? "assistant" : "user",
-        content: m.text,
-      }));
+      .map((m, idx, arr) => {
+        let content = m.text;
+        // If this is the latest user message and asks for date/time, attach real-time clock context
+        if (idx === arr.length - 1 && m.role === "user") {
+          const lower = m.text.toLowerCase();
+          if (
+            lower.includes("date") ||
+            lower.includes("time") ||
+            lower.includes("today") ||
+            lower.includes("year")
+          ) {
+            content = `${m.text}\n[System Clock Context: Today's real-world date is ${currentDateStr}, and local time is ${currentTimeStr}]`;
+          }
+        }
+        return {
+          role: m.role === "bot" ? "assistant" : "user",
+          content,
+        };
+      });
 
     const cleanEndpoint = endpoint.replace(/\/+$/, "");
     const res = await fetch(`${cleanEndpoint}/api/chat`, {
@@ -605,8 +961,11 @@ export default function ChatDemo() {
         messages: [
           {
             role: "system",
-            content:
-              "You are Tejapriyan, a personal AI model fine-tuned by Teja Priyan. Answer helpfully, accurately, and concisely. If asked for SQL, explain the reasoning first in <think> tags.",
+            content: `You are Tejapriyan, a personal AI model created and fine-tuned by Teja Priyan.
+Today's actual real-world date is ${currentDateStr} (Year ${yearNum}).
+The current local time is ${currentTimeStr}.
+When asked about today's date, day, month, year, or time, always answer with this real-world date (${currentDateStr}).
+Answer helpfully, accurately, and concisely. When writing code, provide complete, runnable code in markdown code blocks. If asked for SQL, explain the reasoning first in <think> tags.`,
           },
           ...apiMessages,
         ],
