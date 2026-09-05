@@ -1,0 +1,50 @@
+name: 💡 Feature request
+description: Suggest an improvement to the site, docs, or model experience
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation you run into today.
+      placeholder: I can't export a chat transcript, so I lose answers when I close the tab.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the project?
+      options:
+        - Chatbot
+        - SQL sandbox
+        - Local / remote model connection
+        - Website UI or design
+        - Documentation
+        - Build, CI or deployment
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Project constraints
+      options:
+        - label: My idea does not require sending user input to a third-party AI service
+          required: true
+        - label: I searched existing issues for a similar request
+          required: true

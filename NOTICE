@@ -1,0 +1,22 @@
+Tejapriyan AI Model
+Copyright 2025 Teja Priyan Sivaraj
+
+This product includes software developed by Teja Priyan Sivaraj
+(https://github.com/TejaPriyan/tejapriyan-ai-model).
+
+The Tejapriyan-8B model weights are fine-tuned from Qwen3-8B, developed by
+Alibaba Cloud and released under the Apache License 2.0.
+See https://huggingface.co/Qwen/Qwen3-8B for the original model.
+
+This website bundles the following third-party open-source components:
+
+  - React (MIT License) — https://react.dev
+  - Vite (MIT License) — https://vite.dev
+  - Tailwind CSS (MIT License) — https://tailwindcss.com
+  - Framer Motion (MIT License) — https://motion.dev
+  - lucide-react (ISC License) — https://lucide.dev
+  - sql.js (MIT License) — https://sql.js.org
+  - JSZip (MIT or GPLv3) — https://stuk.github.io/jszip
+  - clsx / tailwind-merge (MIT License)
+
+Each component remains subject to its own license terms.

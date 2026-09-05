@@ -1,0 +1,85 @@
+name: 🐛 Bug report
+description: Something on the site or in the model setup is not working
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please check the
+        [Troubleshooting section](https://github.com/TejaPriyan/tejapriyan-ai-model#troubleshooting)
+        first — it covers the most common issues.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem in a sentence or two.
+      placeholder: The chat replies stop halfway through when I use my local model.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exactly what you did, so it can be reproduced.
+      placeholder: |
+        1. Open the site
+        2. Click "AI Chatbot"
+        3. Ask "..."
+        4. See the error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Which mode were you using?
+      options:
+        - Built-in engine (no install)
+        - Local Ollama (localhost:11434)
+        - Remote node / Cloudflare tunnel
+        - SQL sandbox
+        - Running the dev server locally (npm run dev)
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: Chrome 129 on Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Ollama / Node version (if relevant)
+      placeholder: ollama 0.5.4, node 20.11.0
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console errors or screenshots
+      description: Browser DevTools console output (F12) or a screenshot helps a lot.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been reported yet
+          required: true
+        - label: I read the Troubleshooting section of the README
+          required: true
