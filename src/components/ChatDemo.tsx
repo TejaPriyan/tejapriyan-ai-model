@@ -1,20 +1,15 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
-  ChevronDown,
   Copy,
   Cpu,
   Globe,
-  HelpCircle,
   Laptop,
   Loader2,
   Play,
   Radio,
   RotateCcw,
   Settings,
-  Sparkles,
-  Wifi,
-  WifiOff,
   X,
 } from "lucide-react";
 import { LogoMark } from "./ui";

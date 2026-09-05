@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/TejaPriyan/tejapriyan-ai-model/security/advisories/new
+    about: Please report security issues privately, never in a public issue.
+  - name: 🤗 Questions about the model weights
+    url: https://huggingface.co/teja161615/Tejapriyan-8B-GGUF/discussions
+    about: Quantizations, GGUF files and fine-tuning questions are best asked on Hugging Face.
+  - name: 🛠️ Ollama installation help
+    url: https://github.com/ollama/ollama
+    about: Problems installing or running Ollama itself belong upstream.
