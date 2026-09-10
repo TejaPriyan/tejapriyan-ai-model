@@ -1,0 +1,28 @@
+name: ❓ Question / help
+description: Ask how to do something with Tejapriyan AI
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions are welcome. Please check [SUPPORT.md](https://github.com/TejaPriyan/tejapriyan-ai-model/blob/main/SUPPORT.md)
+        and the README troubleshooting list first — your answer may already be there.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried so far?
+
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup
+      placeholder: Windows 11, Chrome, Ollama installed, using the live site

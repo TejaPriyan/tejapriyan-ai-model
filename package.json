@@ -1,0 +1,42 @@
+{
+  "name": "tejapriyan",
+  "version": "1.0.0",
+  "description": "Tejapriyan AI (8B) - Terminal & Browser Assistant fine-tuned by Teja Priyan Sivaraj",
+  "author": "Teja Priyan Sivaraj",
+  "license": "Apache-2.0",
+  "keywords": ["ai", "ollama", "gguf", "sql", "chat", "terminal", "qwen"],
+  "type": "module",
+  "bin": {
+    "tejapriyan": "./bin/cli.js",
+    "tejapriyan-ai": "./bin/cli.js",
+    "tejapriyan-ai-model": "./bin/cli.js"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "chat": "node bin/cli.js"
+  },
+  "dependencies": {
+    "clsx": "2.1.1",
+    "framer-motion": "^13.1.1",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.38.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "sql.js": "^1.14.2",
+    "tailwind-merge": "3.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.17",
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.1",
+    "tailwindcss": "4.1.17",
+    "typescript": "5.9.3",
+    "vite": "7.3.2",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}

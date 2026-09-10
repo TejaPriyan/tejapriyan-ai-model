@@ -1,0 +1,38 @@
+# Robots.txt for Tejapriyan AI & Projects (tejapriyan.vercel.app)
+# Optimized for Web Search Engines, AI Answer Engines (AEO), and Generative Search (GEO)
+
+User-agent: *
+Allow: /
+
+# Generative Engine Optimization (GEO) - Explicit Crawl Permissions for AI Engines
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Omgilibot
+Allow: /
+
+User-agent: FacebookBot
+Allow: /
+
+Sitemap: https://tejapriyan.vercel.app/sitemap.xml
