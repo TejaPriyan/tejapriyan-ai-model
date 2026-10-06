@@ -41,6 +41,18 @@ export default function Footer() {
               Fine-tuned and shipped by <span className="text-ink">Teja Priyan</span>. Built on{" "}
               <span className="text-ink">Qwen3-8B</span> by the Qwen team — Apache-2.0, credited with gratitude.
             </p>
+            <div className="mt-5">
+              <a
+                href="https://www.buymeacoffee.com/TejaPriyan"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-amber/40 bg-amber/10 px-4 py-2 font-mono text-xs text-amber transition-all hover:bg-amber/20 hover:border-amber/70 hover:scale-[1.02]"
+                title="Support TejaPriyan"
+              >
+                <span>🍕</span>
+                <span>Buy me a pizza</span>
+              </a>
+            </div>
           </div>
 
           {COLS.map((col) => (

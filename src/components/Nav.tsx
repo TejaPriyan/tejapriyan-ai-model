@@ -44,6 +44,16 @@ export default function Nav() {
 
         <div className="flex items-center gap-2.5">
           <a
+            href="https://www.buymeacoffee.com/TejaPriyan"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden items-center gap-1.5 rounded-md border border-amber/40 bg-amber/10 px-3 py-1.5 font-mono text-[11px] text-amber transition-colors hover:bg-amber/20 hover:border-amber/60 md:inline-flex"
+            title="Support TejaPriyan"
+          >
+            <span>🍕</span>
+            <span>Buy me a pizza</span>
+          </a>
+          <a
             href="https://huggingface.co/teja161615/Tejapriyan-8B"
             target="_blank"
             rel="noreferrer"
