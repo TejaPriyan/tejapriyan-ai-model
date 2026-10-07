@@ -97,9 +97,9 @@ export default function ModelCard() {
                 <div className="text-mint">3 rows · matches gold · reward 1.0</div>
               </div>
               <p className="mt-4 font-mono text-[11px] leading-relaxed text-faint">
-                full table in the benchmarks section — overall exec accuracy{" "}
-                <span className="text-amber">43.8% → 71.4%</span> on a 500-question held-out set. temp 0, same harness,
-                both models. eval/ in the repo reproduces it end-to-end.
+                The example above is illustrative. Published benchmark numbers are unverified;
+                this repository does not yet include an evaluation harness and raw results
+                sufficient to reproduce them.
               </p>
             </div>
           </div>

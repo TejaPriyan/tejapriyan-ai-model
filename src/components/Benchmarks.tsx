@@ -38,11 +38,12 @@ export default function Benchmarks() {
       <div className="mx-auto max-w-7xl px-5 py-24 md:px-8 md:py-32">
         <SectionHeading
           index="04"
-          label="The receipts"
-          title="Same base. Measurably"
-          serif="better at one thing."
+          label="Reported results · verification pending"
+          title="Reported benchmark"
+          serif="results under review."
         />
 
+        <p className="mb-6 text-amber">These are previously reported figures, not independently verified results. An evaluation harness, model revision and raw outputs are not yet available in this repository. Do not treat these numbers as established performance.</p>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* main chart */}
           <div className="rounded-xl border border-line bg-panel p-6 md:p-8 lg:col-span-7">
