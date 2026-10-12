@@ -24,7 +24,7 @@ const TABS = [
         code: `npm install -g tejapriyan\ntejapriyan`,
       },
     ],
-    note: "Zero setup required. Connects to your local Ollama if active, or runs offline intelligence immediately.",
+    note: "Connects to local Ollama if available; otherwise shows scripted demonstration responses.",
   },
   {
     id: "ollama",

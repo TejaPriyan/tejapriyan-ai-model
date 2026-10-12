@@ -1107,7 +1107,7 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
               {activeMode === "builtin" && (
                 <>
                   <span className="h-1.5 w-1.5 rounded-full bg-amber/70" />
-                  <span className="text-mute">Built-in Intelligence (Zero Latency)</span>
+                  <span className="text-mute">Scripted demo (not model inference)</span>
                 </>
               )}
             </div>
@@ -1271,7 +1271,7 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
                   ? "Local PC (localhost:11434)"
                   : activeMode === "remote"
                   ? "Remote Host Tunnel"
-                  : "Built-in Intelligence Engine"}
+                  : "Scripted demonstration"}
               </strong>
             </span>
             <span>Zero external cloud APIs</span>
@@ -1310,10 +1310,10 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
             <Loader2 size={11} className="animate-spin text-amber" />
             <span>
               {activeMode === "local"
-                ? "Streaming from local GPU (localhost:11434)..."
+                ? "Streaming from local Ollama (localhost:11434)..."
                 : activeMode === "remote"
                 ? "Streaming from Teja's Live Host PC..."
-                : "Computing response via built-in engine..."}
+                : "Preparing a scripted example..."}
             </span>
           </div>
         )}
