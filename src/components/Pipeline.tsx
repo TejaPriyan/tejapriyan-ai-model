@@ -165,7 +165,7 @@ const STEPS: Step[] = [
     num: "A.6",
     title: "Open Weights & Model Card",
     short: "published on Hugging Face",
-    body: "All checkpoints, safetensors, and GGUF quantizations are published publicly on Hugging Face with full lineage disclosure, reproducible evaluation code, and attribution to the Qwen team.",
+    body: "All checkpoints, safetensors, and GGUF quantizations are published publicly on Hugging Face with full lineage disclosure, architecture documentation, and attribution to the Qwen team.",
     code: "# Hugging Face Hub Repositories:\n# Full Weights: https://huggingface.co/teja161615/Tejapriyan-8B\n# GGUF Quants:  https://huggingface.co/teja161615/Tejapriyan-8B-GGUF\n# License:      Apache-2.0\n# Author:       Teja Priyan",
     codeLabel: "open weights repository",
     bullets: [

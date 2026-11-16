@@ -116,19 +116,19 @@ ollama run tejapriyan
 > However, downloading the GGUF directly using the `curl` commands above is the most reliable method across all setups.
 
 
-**Step 3 — Let the website talk to it.** Browsers need permission to reach Ollama, so start it like this:
+**Step 3 — Let the website talk to it.** Browsers need explicit origin permission to reach local Ollama, so start it scoped to the site origin:
 
 ```powershell
 # Windows (PowerShell)
-$env:OLLAMA_ORIGINS="*" ; ollama serve
+$env:OLLAMA_ORIGINS="https://tejapriyan-ai-model.vercel.app,https://tejapriyan.github.io" ; ollama serve
 ```
 
 ```bash
 # macOS / Linux
-OLLAMA_ORIGINS="*" ollama serve
+OLLAMA_ORIGINS="https://tejapriyan-ai-model.vercel.app,https://tejapriyan.github.io" ollama serve
 ```
 
-**Step 4 — Refresh the website.** The chat header will switch to **🟢 Local Ollama Active (localhost:11434)** and every reply now comes from the model on your machine.
+**Step 4 — Connect from Node Settings.** Open **Node Settings** in the chat header and click **Check Local** (or refresh on local `http://localhost`). The chat header will switch to **🟢 Local Ollama Active (localhost:11434)** and every reply now comes from the model on your machine.
 
 > 💡 You can also skip the website entirely and chat in your terminal, or point any OpenAI-compatible app (Continue, LangChain, LM Studio clients, your own script) at `http://localhost:11434/v1` with the model name `tejapriyan`.
 
@@ -137,9 +137,9 @@ OLLAMA_ORIGINS="*" ollama serve
 Want visitors to your site to chat with the model running on *your* computer? A free Cloudflare tunnel does it — no account needed.
 
 1. Make sure the model is running (`ollama run tejapriyan`).
-2. Double-click **`share-live-model.bat`** — or, in PowerShell, run `./share-live-model.ps1`. (Windows; on macOS/Linux use `cloudflared tunnel --url http://localhost:11434`.)
-3. Copy the URL it prints, e.g. `https://something-random.trycloudflare.com`.
-4. On the website, open the chat → **Node Settings** (⚙) → paste the URL → click **Test**.
+2. Double-click **`share-live-model.bat`** — or, in PowerShell, run `./share-live-model.ps1`. This launches an authenticating, path-filtered proxy (`scripts/ollama-proxy.js`) that exposes only `GET /api/tags` and `POST /api/chat` for `tejapriyan`. (On macOS/Linux, run `node scripts/ollama-proxy.js` and tunnel `http://127.0.0.1:11435` with `cloudflared`.)
+3. Copy the URL and the generated Bearer access token printed in the terminal.
+4. On the website, open the chat → **Node Settings** (⚙) → paste both the URL and access token → click **Test**.
 
 A green **ONLINE** badge means it worked. Anyone visiting now streams answers from your PC. Close the terminal window to stop sharing.
 
@@ -187,7 +187,7 @@ Reported text-to-SQL execution accuracy on a held-out Spider dev subset (n = 500
 <details>
 <summary><b>The site still says "Built-in Intelligence Engine" after I started Ollama</b></summary>
 
-The browser is being blocked by CORS. Stop Ollama and restart it with `OLLAMA_ORIGINS="*"` set (Step 3 above), then refresh the page. On Windows the setting only applies to the terminal you set it in — use the same window for `ollama serve`.
+The browser is being blocked by CORS. Stop Ollama and restart it with `OLLAMA_ORIGINS` set to the website origin (Step 3 above), then click **Check Local** in **Node Settings**. On Windows the setting only applies to the terminal you set it in — use the same window for `ollama serve`.
 </details>
 
 <details>

@@ -24,7 +24,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "chat": "node bin/cli.js"
+    "chat": "node bin/cli.js",
+    "test": "node --test"
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -46,5 +47,13 @@
     "typescript": "7.0.2",
     "vite": "^8.3.4",
     "vite-plugin-singlefile": "2.3.3"
-  }
+  },
+  "files": [
+    "bin",
+    "Modelfile",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ]
 }

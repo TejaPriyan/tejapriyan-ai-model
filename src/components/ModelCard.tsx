@@ -7,7 +7,7 @@ const BADGES = ["apache-2.0", "gguf", "q4_k_m · q8_0 · f16", "fine-tune of qwe
 const CHECKLIST = [
   "Base model stated in the first paragraph: Qwen3-8B by the Qwen team, with a license link",
   "Both fine-tunes described — SFT for identity, GRPO with execution reward for SQL",
-  "Real before/after: held-out execution accuracy, base vs. Tejapriyan, reproducible via eval/",
+  "Reported before/after: held-out execution accuracy, base vs. Tejapriyan (eval harness pending)",
   "The one-command experience at the top: ollama run tejapriyan",
 ];
 

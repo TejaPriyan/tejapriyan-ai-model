@@ -1,3 +1,5 @@
+import { evaluateArithmeticExpression } from "./mathEval";
+
 export interface ChatMessage {
   role: "user" | "bot";
   text: string;
@@ -48,21 +50,14 @@ function solveArithmetic(input: string): string | null {
     .trim();
 
   // Check if expr consists only of numbers, parentheses, spaces, and math operators
-  if (/^[\d\.\s\+\-\*\/\%\(\)]+$/.test(expr)) {
-    // Must contain at least one operator and at least two numbers
-    const hasOp = /[\+\-\*\/\%]/.test(expr);
+  if (/^[\d.\s+\-*/%()]+$/.test(expr)) {
+    const hasOp = /[+\-*/%]/.test(expr);
     const numbers = expr.match(/\d+(?:\.\d+)?/g);
     if (hasOp && numbers && numbers.length >= 2) {
-      try {
-        // Safe evaluation via Function with whitelisted characters
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const result = Function(`"use strict"; return (${expr})`)();
-        if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
-          const formattedResult = Number.isInteger(result) ? result.toString() : result.toFixed(4).replace(/\.?0+$/, "");
-          return `${input.replace(/\?+$/, "").trim()} = **${formattedResult}**`;
-        }
-      } catch {
-        // Not a pure arithmetic expression
+      const result = evaluateArithmeticExpression(expr);
+      if (result !== null && Number.isFinite(result)) {
+        const formattedResult = Number.isInteger(result) ? result.toString() : result.toFixed(4).replace(/\.?0+$/, "");
+        return `${input.replace(/\?+$/, "").trim()} = **${formattedResult}**`;
       }
     }
   }

@@ -15,6 +15,16 @@ import {
 import { LogoMark } from "./ui";
 import { cn } from "@/utils/cn";
 import { getAssistantResponse } from "@/utils/aiResponder";
+import {
+  buildPlaygroundHtml,
+  consumeOllamaNdjsonStream,
+  hasTejapriyanModel,
+  isLoopbackEndpoint,
+  isTrustedIframeMessage,
+  queryLoopbackPermissionSafe,
+  sanitizeEndpointUrl,
+  shouldAutoCheckLocal,
+} from "@/utils/chatPlayground";
 
 type Msg = { role: "user" | "bot"; text: string; done: boolean };
 
@@ -109,303 +119,28 @@ function CodePlayground({
   const detectedLang = detectCodeType(editableCode, lang);
   const effectiveLang = activeMode === "auto" ? detectedLang : activeMode;
 
-  // Build a full HTML document from the code, injecting console capture
-  const buildDoc = useCallback(
-    (code: string, currentLang: string) => {
-      // Console capture script — intercepts console.log/warn/error and posts them to parent
-      const consoleCapture = `
-<script>
-(function(){
-  const origLog = console.log;
-  const origWarn = console.warn;
-  const origError = console.error;
-  function send(type, args) {
-    try {
-      const msg = Array.from(args).map(a => {
-        if (typeof a === 'object') try { return JSON.stringify(a, null, 2); } catch(e) { return String(a); }
-        return String(a);
-      }).join(' ');
-      window.parent.postMessage({ type: 'console', level: type, message: msg }, '*');
-    } catch(e) {}
-  }
-  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
-  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
-  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
-  window.onerror = function(msg, src, line, col, err) {
-    send('error', [msg + (line ? ' (line ' + line + ')' : '')]);
-  };
-})();
-<\/script>`;
+  // Build a sandboxed HTML document from the code, injecting console capture
+  const buildDoc = useCallback((code: string, currentLang: string) => {
+    return buildPlaygroundHtml(code, currentLang);
+  }, []);
 
-      // ─── 1. JAVASCRIPT EXECUTION ───
-      if (currentLang === "javascript") {
-        return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      padding: 16px;
-      margin: 0;
-      background: #ffffff;
-      color: #18181b;
-      line-height: 1.5;
-    }
-    #app, #root, #game, #canvas { margin-bottom: 12px; }
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 8px;
-      background: #ecfdf5;
-      color: #059669;
-      font-family: ui-monospace, monospace;
-      font-size: 11px;
-      border-radius: 9999px;
-      border: 1px solid #a7f3d0;
-      font-weight: 500;
-      margin-bottom: 12px;
-    }
-    .runtime-err {
-      margin-top: 14px;
-      padding: 12px 14px;
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      border-radius: 8px;
-      color: #dc2626;
-      font-family: ui-monospace, monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-    }
-    button {
-      cursor: pointer;
-      padding: 6px 14px;
-      background: #f59e0b;
-      color: #000;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 13px;
-      transition: opacity 0.15s;
-    }
-    button:hover { opacity: 0.9; }
-    input {
-      padding: 6px 10px;
-      border: 1px solid #d4d4d8;
-      border-radius: 6px;
-      font-size: 13px;
-      margin-right: 6px;
-    }
-  </style>
-  ${consoleCapture}
-</head>
-<body>
-  <div class="status-pill">⚡ JavaScript Runner Active</div>
-  <div id="app"></div>
-  <div id="root"></div>
-  <div id="game"></div>
-  <script>
-    (function() {
-      try {
-        ${code}
-      } catch (err) {
-        console.error(err.message || String(err));
-        var errBox = document.createElement('div');
-        errBox.className = 'runtime-err';
-        errBox.innerHTML = '<strong>❌ Script Error:</strong> ' + (err.message || String(err));
-        document.body.appendChild(errBox);
-      }
-    })();
-  <\/script>
-</body>
-</html>`;
-      }
-
-      // ─── 2. PYTHON EXECUTION (SKULPT IN-BROWSER) ───
-      if (currentLang === "python") {
-        return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"><\/script>
-  <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"><\/script>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      padding: 16px;
-      margin: 0;
-      background: #ffffff;
-      color: #18181b;
-    }
-    .py-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-family: sans-serif;
-      font-size: 11px;
-      font-weight: 600;
-      color: #4338ca;
-      background: #e0e7ff;
-      border: 1px solid #c7d2fe;
-      padding: 3px 8px;
-      border-radius: 9999px;
-      margin-bottom: 12px;
-    }
-    #py-output {
-      background: #09090b;
-      color: #f4f4f5;
-      padding: 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      word-break: break-word;
-      min-height: 90px;
-      border: 1px solid #27272a;
-    }
-    .py-err { color: #f87171; font-weight: bold; }
-  </style>
-  ${consoleCapture}
-</head>
-<body>
-  <div class="py-status">🐍 Python Live Runner</div>
-  <pre id="py-output"></pre>
-  <script>
-    var outBox = document.getElementById("py-output");
-    function outf(text) {
-      outBox.textContent += text;
-      console.log(text.replace(/\\n$/, ''));
-    }
-    function builtinRead(x) {
-      if (typeof Sk === 'undefined' || Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) {
-        throw "File not found: '" + x + "'";
-      }
-      return Sk.builtinFiles["files"][x];
-    }
-    if (typeof Sk !== 'undefined') {
-      Sk.configure({
-        output: outf,
-        read: builtinRead,
-        inputfun: function(prompt) {
-          return window.prompt(prompt || "Enter Python input:");
-        },
-        inputfunTakesPrompt: true
-      });
-      Sk.misceval.asyncToPromise(function() {
-        return Sk.importMainWithBody("<stdin>", false, ${JSON.stringify(code)}, true);
-      }).catch(function(err) {
-        outBox.innerHTML += '<span class="py-err">\\n❌ Python Error: ' + err.toString() + '</span>';
-        console.error(err.toString());
-      });
-    } else {
-      outBox.textContent = "Connecting to Python engine...\\nIf running offline, connect to internet for Skulpt Python engine.";
-    }
-  <\/script>
-</body>
-</html>`;
-      }
-
-      // ─── 3. CSS PREVIEW ───
-      if (currentLang === "css") {
-        return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; margin: 0; background: #fff; color: #1a1a1a; }
-    .demo-box { max-width: 600px; margin: 0 auto; }
-    ${code}
-  </style>
-  ${consoleCapture}
-</head>
-<body>
-  <div class="demo-box">
-    <h2>CSS Live Preview</h2>
-    <p>This is a paragraph demonstrating your custom CSS styles in real time.</p>
-    <button>Sample Button</button>
-    <a href="#" style="margin-left: 10px;">Sample Link</a>
-    <div style="margin-top: 16px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <h4>Card Container</h4>
-      <p>Inner card content with custom styling applied above.</p>
-    </div>
-  </div>
-</body>
-</html>`;
-      }
-
-      // ─── 4. HTML (FULL OR PARTIAL) ───
-      if (
-        code.includes("<html") ||
-        code.includes("<!DOCTYPE") ||
-        code.includes("<!doctype")
-      ) {
-        if (/<head[^>]*>/i.test(code)) {
-          return code.replace(/<head[^>]*>/i, (match) => match + consoleCapture);
-        }
-        return consoleCapture + code;
-      }
-
-      // Partial HTML snippet — wrap in a clean document
-      return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      padding: 16px;
-      margin: 0;
-      background: #ffffff;
-      color: #18181b;
-      line-height: 1.5;
-    }
-    button {
-      cursor: pointer;
-      padding: 6px 14px;
-      background: #f59e0b;
-      color: #000;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    input {
-      padding: 6px 10px;
-      border: 1px solid #d4d4d8;
-      border-radius: 6px;
-      font-size: 13px;
-      margin-right: 6px;
-    }
-  </style>
-  ${consoleCapture}
-</head>
-<body>
-  ${code}
-</body>
-</html>`;
-    },
-    []
-  );
-
-  // Listen for console messages from iframe
+  // Listen for console messages from this specific sandboxed iframe only
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data && e.data.type === "console") {
+      if (!isTrustedIframeMessage(e, iframeRef.current?.contentWindow)) return;
+      if (e.data && typeof e.data === "object" && e.data.type === "console") {
+        const level = e.data.level;
         const prefix =
-          e.data.level === "error"
+          level === "error"
             ? "❌ "
-            : e.data.level === "warn"
+            : level === "warn"
             ? "⚠️ "
             : "› ";
-        setConsoleLogs((prev) => [...prev.slice(-50), prefix + e.data.message]);
+        const message =
+          typeof e.data.message === "string"
+            ? e.data.message
+            : String(e.data.message ?? "");
+        setConsoleLogs((prev) => [...prev.slice(-50), prefix + message]);
       }
     };
     window.addEventListener("message", handler);
@@ -546,12 +281,13 @@ function CodePlayground({
               </span>
             </div>
 
-            {/* Live interactive iframe — no sandbox restriction so alert/prompt/games work */}
+            {/* Sandboxed live iframe: scripts + modals allowed in an isolated opaque origin */}
             <div className="flex-1 bg-white min-h-0 overflow-hidden">
               <iframe
                 ref={iframeRef}
                 key={runCount}
                 srcDoc={srcDoc}
+                sandbox="allow-scripts allow-modals"
                 title="Code Output"
                 className="w-full h-full border-0"
               />
@@ -787,78 +523,194 @@ export default function ChatDemo() {
   const [remoteAvailable, setRemoteAvailable] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  // Custom remote host URL (e.g. Cloudflare tunnel or ngrok)
+  // Custom remote host URL (e.g. Cloudflare tunnel proxy) and optional Bearer token
   const [hostUrl, setHostUrl] = useState(() => {
-    return localStorage.getItem("tejapriyan_host_url") || DEFAULT_HOST;
+    try {
+      return localStorage.getItem("tejapriyan_host_url") || DEFAULT_HOST;
+    } catch {
+      return DEFAULT_HOST;
+    }
   });
+  const [hostToken, setHostToken] = useState(() => {
+    try {
+      return sessionStorage.getItem("tejapriyan_host_token") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [localStatus, setLocalStatus] = useState<
+    "idle" | "connected" | "missing-model" | "offline" | "permission-prompt" | "permission-denied"
+  >("idle");
+  const [remoteStatus, setRemoteStatus] = useState<
+    "idle" | "connected" | "missing-model" | "unauthorized" | "offline" | "invalid-url"
+  >("idle");
   const [showSettings, setShowSettings] = useState(false);
   const [copiedCors, setCopiedCors] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
+  const localAvailableRef = useRef(false);
+  const remoteAvailableRef = useRef(false);
 
-  // Check health of local Ollama and remote host
-  const checkConnections = useCallback(async () => {
-    setChecking(true);
-    let localOk = false;
-    let remoteOk = false;
+  // Check health of local Ollama and/or remote host; verifies tejapriyan exists in /api/tags
+  const checkConnections = useCallback(
+    async ({
+      includeLocal = false,
+      includeRemote = true,
+    }: { includeLocal?: boolean; includeRemote?: boolean } = {}) => {
+      setChecking(true);
+      let localOk = localAvailableRef.current;
+      let remoteOk = remoteAvailableRef.current;
+      const isHttpsPage =
+        typeof window !== "undefined" && window.location.protocol === "https:";
 
-    // 1. Check Visitor's Local Ollama on http://localhost:11434
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch("http://localhost:11434/api/tags", {
-        method: "GET",
-        mode: "cors",
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        localOk = true;
-      }
-    } catch {
-      localOk = false;
-    }
-
-    // 2. Check Remote Host PC (Teja's Cloudflare tunnel or public IP)
-    const targetRemote = hostUrl.trim().replace(/\/+$/, "");
-    if (targetRemote && targetRemote !== "http://localhost:11434") {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch(`${targetRemote}/api/tags`, {
-          method: "GET",
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          remoteOk = true;
+      // 1. Check Visitor's Local Ollama on http://localhost:11434 when requested or permitted
+      if (includeLocal) {
+        const lnaState = await queryLoopbackPermissionSafe(
+          typeof navigator !== "undefined" ? navigator.permissions : undefined
+        );
+        if (isHttpsPage && lnaState === "denied") {
+          localOk = false;
+          setLocalStatus("permission-denied");
+        } else {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1500);
+            const fetchInit: RequestInit & { targetAddressSpace?: "loopback" } = {
+              method: "GET",
+              mode: "cors",
+              signal: controller.signal,
+            };
+            if (isHttpsPage) {
+              fetchInit.targetAddressSpace = "loopback";
+            }
+            const res = await fetch("http://localhost:11434/api/tags", fetchInit);
+            clearTimeout(timeoutId);
+            if (res.ok) {
+              const data = await res.json().catch(() => null);
+              if (hasTejapriyanModel(data)) {
+                localOk = true;
+                setLocalStatus("connected");
+              } else {
+                localOk = false;
+                setLocalStatus("missing-model");
+              }
+            } else {
+              localOk = false;
+              setLocalStatus("offline");
+            }
+          } catch {
+            localOk = false;
+            setLocalStatus("offline");
+          }
         }
-      } catch {
-        remoteOk = false;
       }
-    }
 
-    setLocalAvailable(localOk);
-    setRemoteAvailable(remoteOk);
+      // 2. Check Remote Host PC (authenticated tunnel proxy or configured endpoint)
+      if (includeRemote) {
+        const rawRemote = hostUrl.trim();
+        if (!rawRemote) {
+          remoteOk = false;
+          setRemoteStatus("idle");
+        } else {
+          const targetRemote = sanitizeEndpointUrl(rawRemote);
+          if (!targetRemote) {
+            remoteOk = false;
+            setRemoteStatus("invalid-url");
+          } else if (targetRemote === "http://localhost:11434") {
+            remoteOk = false;
+            setRemoteStatus("idle");
+          } else {
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 2500);
+              const headers: Record<string, string> = {};
+              if (hostToken.trim()) {
+                headers.Authorization = `Bearer ${hostToken.trim()}`;
+              }
+              const fetchInit: RequestInit & { targetAddressSpace?: "loopback" } = {
+                method: "GET",
+                headers,
+                signal: controller.signal,
+              };
+              if (isHttpsPage && isLoopbackEndpoint(targetRemote)) {
+                fetchInit.targetAddressSpace = "loopback";
+              }
+              const res = await fetch(`${targetRemote}/api/tags`, fetchInit);
+              clearTimeout(timeoutId);
+              if (res.status === 401 || res.status === 403) {
+                remoteOk = false;
+                setRemoteStatus("unauthorized");
+              } else if (res.ok) {
+                const data = await res.json().catch(() => null);
+                if (hasTejapriyanModel(data)) {
+                  remoteOk = true;
+                  setRemoteStatus("connected");
+                } else {
+                  remoteOk = false;
+                  setRemoteStatus("missing-model");
+                }
+              } else {
+                remoteOk = false;
+                setRemoteStatus("offline");
+              }
+            } catch {
+              remoteOk = false;
+              setRemoteStatus("offline");
+            }
+          }
+        }
+      }
 
-    if (localOk) {
-      setActiveMode("local");
-    } else if (remoteOk) {
-      setActiveMode("remote");
-    } else {
-      setActiveMode("builtin");
-    }
+      localAvailableRef.current = localOk;
+      remoteAvailableRef.current = remoteOk;
+      setLocalAvailable(localOk);
+      setRemoteAvailable(remoteOk);
 
-    setChecking(false);
-  }, [hostUrl]);
+      if (localOk) {
+        setActiveMode("local");
+      } else if (remoteOk) {
+        setActiveMode("remote");
+      } else {
+        setActiveMode("builtin");
+      }
 
+      setChecking(false);
+    },
+    [hostUrl, hostToken]
+  );
+
+  // Initial connection check once on mount: no 30s background polling on HTTPS origins
   useEffect(() => {
-    checkConnections();
-    // Reduced polling to 30s for smoother performance
-    const interval = setInterval(checkConnections, 30000);
-    return () => clearInterval(interval);
-  }, [checkConnections]);
+    let cancelled = false;
+    (async () => {
+      const lnaState = await queryLoopbackPermissionSafe(
+        typeof navigator !== "undefined" ? navigator.permissions : undefined
+      );
+      if (cancelled) return;
+      const protocol = typeof window !== "undefined" ? window.location.protocol : "https:";
+      const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+      const autoLocal = shouldAutoCheckLocal({
+        protocol,
+        hostname,
+        loopbackPermission: lnaState,
+      });
+
+      if (!autoLocal && protocol === "https:") {
+        setLocalStatus(lnaState === "denied" ? "permission-denied" : "permission-prompt");
+      }
+
+      const hasInitialRemote = Boolean(hostUrl.trim());
+      if (autoLocal || hasInitialRemote) {
+        await checkConnections({ includeLocal: autoLocal, includeRemote: hasInitialRemote });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Run only once on mount so typing in Node Settings does not trigger probes per keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -875,7 +727,25 @@ export default function ChatDemo() {
   const handleSaveHost = (newUrl: string) => {
     const trimmed = newUrl.trim();
     setHostUrl(trimmed);
-    localStorage.setItem("tejapriyan_host_url", trimmed);
+    try {
+      localStorage.setItem("tejapriyan_host_url", trimmed);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const handleSaveToken = (newToken: string) => {
+    const trimmed = newToken.trim();
+    setHostToken(trimmed);
+    try {
+      if (trimmed) {
+        sessionStorage.setItem("tejapriyan_host_token", trimmed);
+      } else {
+        sessionStorage.removeItem("tejapriyan_host_token");
+      }
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const resetChat = () => {
@@ -947,10 +817,22 @@ export default function ChatDemo() {
         };
       });
 
-    const cleanEndpoint = endpoint.replace(/\/+$/, "");
-    const res = await fetch(`${cleanEndpoint}/api/chat`, {
+    const cleanEndpoint = sanitizeEndpointUrl(endpoint);
+    if (!cleanEndpoint) {
+      throw new Error("Invalid Ollama endpoint URL");
+    }
+
+    const isHttpsPage =
+      typeof window !== "undefined" && window.location.protocol === "https:";
+    const isLoopback = isLoopbackEndpoint(cleanEndpoint);
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (!isLoopback && hostToken.trim()) {
+      headers.Authorization = `Bearer ${hostToken.trim()}`;
+    }
+
+    const fetchInit: RequestInit & { targetAddressSpace?: "loopback" } = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         model: "tejapriyan",
         messages: [
@@ -966,45 +848,31 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
         ],
         stream: true,
       }),
-    });
+    };
+    if (isHttpsPage && isLoopback) {
+      fetchInit.targetAddressSpace = "loopback";
+    }
+
+    const res = await fetch(`${cleanEndpoint}/api/chat`, fetchInit);
 
     if (!res.ok || !res.body) {
       throw new Error(`Ollama responded with status ${res.status}`);
     }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
     let fullText = "";
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line);
-          const token = parsed.message?.content || "";
-          fullText += token;
-          setMessages((prev) => {
-            const copy = [...prev];
-            copy[copy.length - 1] = {
-              role: "bot",
-              text: fullText,
-              done: parsed.done || false,
-            };
-            return copy;
-          });
-        } catch {
-          // partial line chunk
-        }
-      }
-    }
+    await consumeOllamaNdjsonStream(res.body, (parsed) => {
+      const token = parsed.message?.content || "";
+      fullText += token;
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[copy.length - 1] = {
+          role: "bot",
+          text: fullText,
+          done: parsed.done || false,
+        };
+        return copy;
+      });
+    });
 
     setMessages((prev) => {
       const copy = [...prev];
@@ -1070,7 +938,11 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
   };
 
   const copyCorsCmd = () => {
-    navigator.clipboard.writeText('$env:OLLAMA_ORIGINS="*" ; ollama serve');
+    const origin =
+      typeof window !== "undefined" && window.location.origin
+        ? window.location.origin
+        : "https://tejapriyan-ai-model.vercel.app";
+    navigator.clipboard.writeText(`$env:OLLAMA_ORIGINS="${origin}" ; ollama serve`);
     setCopiedCors(true);
     setTimeout(() => setCopiedCors(false), 2000);
   };
@@ -1187,10 +1059,20 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
                     "font-mono text-[9px] px-1.5 py-0.5 rounded",
                     localAvailable
                       ? "bg-mint/20 text-mint font-semibold"
+                      : localStatus === "missing-model"
+                      ? "bg-amber/20 text-amber font-semibold"
                       : "bg-panel text-faint"
                   )}
                 >
-                  {localAvailable ? "CONNECTED" : "OFFLINE"}
+                  {localAvailable
+                    ? "CONNECTED"
+                    : localStatus === "missing-model"
+                    ? "MODEL MISSING"
+                    : localStatus === "permission-denied"
+                    ? "BLOCKED"
+                    : localStatus === "permission-prompt"
+                    ? "ON REQUEST"
+                    : "OFFLINE"}
                 </span>
               </div>
               <p className="text-[11px] leading-relaxed mb-2 text-mute">
@@ -1204,18 +1086,37 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
                 </a>
                 )
               </p>
-              <button
-                onClick={copyCorsCmd}
-                className="flex items-center gap-1 text-[10px] font-mono text-faint hover:text-amber bg-raise rounded border border-line px-1.5 py-0.5"
-                title="Copy CORS command to enable browser access"
-              >
-                {copiedCors ? (
-                  <Check size={10} className="text-mint" />
-                ) : (
-                  <Copy size={10} />
-                )}
-                <span>{copiedCors ? "Copied Command!" : "Copy CORS Start Command"}</span>
-              </button>
+              {localStatus === "missing-model" && (
+                <p className="text-[10px] font-mono text-amber mb-2">
+                  Ollama is running, but the <code>tejapriyan</code> model was not found in <code>/api/tags</code>.
+                </p>
+              )}
+              {localStatus === "permission-denied" && (
+                <p className="text-[10px] font-mono text-crimson mb-2">
+                  Loopback network permission is denied in browser Site settings. Allow it and click Check Local.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => checkConnections({ includeLocal: true, includeRemote: false })}
+                  disabled={checking}
+                  className="rounded bg-amber/20 border border-amber/40 px-2 py-0.5 text-[10px] font-mono font-semibold text-amber hover:bg-amber hover:text-panel disabled:opacity-40"
+                >
+                  {checking ? "Checking..." : "Check Local"}
+                </button>
+                <button
+                  onClick={copyCorsCmd}
+                  className="flex items-center gap-1 text-[10px] font-mono text-faint hover:text-amber bg-raise rounded border border-line px-1.5 py-0.5"
+                  title="Copy origin-scoped CORS start command"
+                >
+                  {copiedCors ? (
+                    <Check size={10} className="text-mint" />
+                  ) : (
+                    <Copy size={10} />
+                  )}
+                  <span>{copiedCors ? "Copied Command!" : "Copy CORS Start Command"}</span>
+                </button>
+              </div>
             </div>
 
             {/* Mode 2: Remote Host PC Tunnel */}
@@ -1235,30 +1136,57 @@ Answer helpfully, accurately, and concisely. When writing code, provide complete
                     "font-mono text-[9px] px-1.5 py-0.5 rounded",
                     remoteAvailable
                       ? "bg-mint/20 text-mint font-semibold"
+                      : remoteStatus === "unauthorized"
+                      ? "bg-amber/20 text-amber font-semibold"
                       : "bg-panel text-faint"
                   )}
                 >
-                  {remoteAvailable ? "ONLINE" : "STANDBY"}
+                  {remoteAvailable
+                    ? "ONLINE"
+                    : remoteStatus === "unauthorized"
+                    ? "TOKEN REQUIRED"
+                    : remoteStatus === "missing-model"
+                    ? "MODEL MISSING"
+                    : "STANDBY"}
                 </span>
               </div>
               <p className="text-[11px] leading-relaxed mb-2 text-mute">
-                Enter your live Cloudflare tunnel or public URL so the world chats with your PC:
+                Enter your authenticated tunnel URL and token from <code className="text-amber">share-live-model</code>:
               </p>
-              <div className="flex items-center gap-1">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={hostUrl}
+                    onChange={(e) => handleSaveHost(e.target.value)}
+                    placeholder="https://xxxx.trycloudflare.com"
+                    className="w-full rounded border border-line bg-panel px-2 py-1 font-mono text-[10px] text-ink outline-none focus:border-amber/60"
+                  />
+                  <button
+                    onClick={() => checkConnections({ includeLocal: false, includeRemote: true })}
+                    disabled={checking}
+                    className="rounded bg-amber/20 border border-amber/40 px-2 py-1 text-[10px] font-mono font-semibold text-amber hover:bg-amber hover:text-panel disabled:opacity-40 shrink-0"
+                  >
+                    {checking ? "Checking..." : "Test"}
+                  </button>
+                </div>
                 <input
-                  type="text"
-                  value={hostUrl}
-                  onChange={(e) => handleSaveHost(e.target.value)}
-                  placeholder="https://xxxx.trycloudflare.com"
+                  type="password"
+                  value={hostToken}
+                  onChange={(e) => handleSaveToken(e.target.value)}
+                  placeholder="Bearer access token (printed by share-live-model)"
                   className="w-full rounded border border-line bg-panel px-2 py-1 font-mono text-[10px] text-ink outline-none focus:border-amber/60"
                 />
-                <button
-                  onClick={checkConnections}
-                  disabled={checking}
-                  className="rounded bg-amber/20 border border-amber/40 px-2 py-1 text-[10px] font-mono font-semibold text-amber hover:bg-amber hover:text-panel disabled:opacity-40 shrink-0"
-                >
-                  {checking ? "Checking..." : "Test"}
-                </button>
+                {remoteStatus === "unauthorized" && (
+                  <p className="text-[10px] font-mono text-amber">
+                    Authentication required — enter the Bearer token printed by share-live-model.
+                  </p>
+                )}
+                {remoteStatus === "invalid-url" && (
+                  <p className="text-[10px] font-mono text-crimson">
+                    Enter a valid http:// or https:// endpoint URL.
+                  </p>
+                )}
               </div>
             </div>
           </div>

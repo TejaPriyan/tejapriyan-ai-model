@@ -7,12 +7,13 @@
  * When run via `npx tejapriyan`:
  * 1. Checks if Ollama is installed and running.
  * 2. Checks if the 8B model `tejapriyan` is built.
- * 3. If not, automatically downloads the 4.7 GB GGUF and creates the model in Ollama!
- * 4. Starts live, real-time streaming AI chat directly with the 8B model!
+ * 3. If not, automatically downloads and SHA-256 verifies the 4.7 GB GGUF and creates the model in Ollama.
+ * 4. Starts live, real-time streaming AI chat directly with the 8B model.
  */
 
 import readline from "node:readline";
-import { spawn, spawnSync, execSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,14 +21,27 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, "..");
+export const ROOT_DIR = path.resolve(__dirname, "..");
 
 // Cache directory in user home to avoid re-downloading across different folders
-const CACHE_DIR = path.join(os.homedir(), ".tejapriyan");
-const GGUF_FILENAME = "tejapriyan-q4_k_m.gguf";
-const GGUF_URL = "https://huggingface.co/teja161615/Tejapriyan-8B-GGUF/resolve/main/tejapriyan-q4_k_m.gguf";
-const EXPECTED_GGUF_SIZE = 4683073536; // ~4.68 GB
-const MODEL_NAME = "tejapriyan";
+export const CACHE_DIR = path.join(os.homedir(), ".tejapriyan");
+export const GGUF_FILENAME = "tejapriyan-q4_k_m.gguf";
+export const GGUF_URL =
+  "https://huggingface.co/teja161615/Tejapriyan-8B-GGUF/resolve/main/tejapriyan-q4_k_m.gguf";
+export const EXPECTED_GGUF_SIZE = 4683073536; // ~4.68 GB
+export const EXPECTED_GGUF_SHA256 =
+  "c716e7ce044cff69e9997ba947a7bee104bb7326dcf447138bb2bd2a8a621c9c";
+export const MODEL_NAME = "tejapriyan";
+
+function getPackageVersion(rootDir = ROOT_DIR) {
+  try {
+    const pkgRaw = fs.readFileSync(path.join(rootDir, "package.json"), "utf8");
+    const pkg = JSON.parse(pkgRaw);
+    return typeof pkg.version === "string" ? pkg.version : "1.0.0";
+  } catch {
+    return "1.0.0";
+  }
+}
 
 // ANSI Colors
 const c = {
@@ -41,46 +55,61 @@ const c = {
   gray: "\x1b[38;2;156;163;175m",
 };
 
-// Check if command exists in PATH
-function commandExists(cmd) {
+// Check if command exists in PATH without invoking a shell
+export function commandExists(cmd) {
   try {
-    const testCmd = process.platform === "win32" ? `where ${cmd}` : `which ${cmd}`;
-    execSync(testCmd, { stdio: "ignore" });
-    return true;
+    const lookupBin = process.platform === "win32" ? "where.exe" : "which";
+    const res = spawnSync(lookupBin, [cmd], { stdio: "ignore" });
+    return res.status === 0;
   } catch {
     return false;
   }
 }
 
+export function hasTejapriyanModel(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.models)) {
+    return false;
+  }
+  return data.models.some((m) => {
+    const name = typeof m?.name === "string" ? m.name : "";
+    const model = typeof m?.model === "string" ? m.model : "";
+    const combined = `${name} ${model}`.toLowerCase();
+    return /(?:^|\/|\s)tejapriyan(?::|$|\s|-)|teja161615/.test(combined);
+  });
+}
+
 // Check Ollama HTTP server
-async function checkOllamaServer(endpoint = "http://localhost:11434") {
+export async function checkOllamaServer(
+  endpoint = "http://localhost:11434",
+  fetchImpl = fetch
+) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1800);
-    const res = await fetch(`${endpoint}/api/tags`, { signal: controller.signal });
+    const res = await fetchImpl(`${endpoint}/api/tags`, {
+      signal: controller.signal,
+    });
     clearTimeout(timer);
     if (!res.ok) return { online: false, hasModel: false, models: [] };
     const data = await res.json();
-    const models = (data.models || []).map((m) => m.name.toLowerCase());
-    const hasModel = models.some(
-      (m) => m.includes("tejapriyan") || m.includes("teja161615")
+    const models = (data.models || []).map((m) =>
+      String(m?.name || m?.model || "").toLowerCase()
     );
+    const hasModel = hasTejapriyanModel(data);
     return { online: true, hasModel, models };
   } catch {
     return { online: false, hasModel: false, models: [] };
   }
 }
 
-// Try starting Ollama server in background if installed
-async function tryStartOllamaServer() {
+// Try starting Ollama server in background if installed (no wildcard OLLAMA_ORIGINS, without invoking a shell)
+export async function tryStartOllamaServer() {
   if (!commandExists("ollama")) return false;
   try {
-    const env = { ...process.env, OLLAMA_ORIGINS: "*" };
     const child = spawn("ollama", ["serve"], {
       detached: true,
       stdio: "ignore",
-      env,
-      shell: process.platform === "win32",
+      windowsHide: true,
     });
     child.unref();
 
@@ -96,114 +125,240 @@ async function tryStartOllamaServer() {
   return false;
 }
 
-// Locate existing GGUF if already downloaded
-function findExistingGguf() {
-  const localPath = path.join(process.cwd(), GGUF_FILENAME);
-  if (fs.existsSync(localPath) && fs.statSync(localPath).size > 1000000000) {
-    return localPath;
+// Stream-verify file size and SHA-256 without loading multi-GB files into memory
+export async function verifyFileSha256(
+  filePath,
+  expectedSha256 = EXPECTED_GGUF_SHA256,
+  expectedSize = EXPECTED_GGUF_SIZE
+) {
+  try {
+    const stat = await fs.promises.stat(filePath);
+    if (expectedSize != null && stat.size !== expectedSize) {
+      return {
+        valid: false,
+        reason: `size mismatch (expected ${expectedSize} bytes, got ${stat.size} bytes)`,
+        size: stat.size,
+        sha256: null,
+      };
+    }
+
+    const actualSha256 = await new Promise((resolve, reject) => {
+      const hash = crypto.createHash("sha256");
+      const stream = fs.createReadStream(filePath);
+      stream.on("data", (chunk) => hash.update(chunk));
+      stream.on("end", () => resolve(hash.digest("hex")));
+      stream.on("error", reject);
+    });
+
+    const normalizedExpected = String(expectedSha256).toLowerCase();
+    const valid = actualSha256.toLowerCase() === normalizedExpected;
+    return {
+      valid,
+      reason: valid
+        ? null
+        : `SHA-256 mismatch (expected ${normalizedExpected}, got ${actualSha256})`,
+      size: stat.size,
+      sha256: actualSha256,
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      reason: err.message,
+      size: 0,
+      sha256: null,
+    };
   }
-  const rootPath = path.join(ROOT_DIR, GGUF_FILENAME);
-  if (fs.existsSync(rootPath) && fs.statSync(rootPath).size > 1000000000) {
-    return rootPath;
-  }
-  const cachePath = path.join(CACHE_DIR, GGUF_FILENAME);
-  if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 1000000000) {
-    return cachePath;
+}
+
+// Locate existing GGUF matching exact expected size
+export function findExistingGguf({
+  cwd = process.cwd(),
+  rootDir = ROOT_DIR,
+  cacheDir = CACHE_DIR,
+  expectedSize = EXPECTED_GGUF_SIZE,
+} = {}) {
+  const candidates = [
+    path.join(cwd, GGUF_FILENAME),
+    path.join(rootDir, GGUF_FILENAME),
+    path.join(cacheDir, GGUF_FILENAME),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).size === expectedSize) {
+      return candidate;
+    }
   }
   return null;
 }
 
-// Download GGUF using curl (with native resume & progress bar) or Node fetch
-async function downloadGguf(targetPath) {
+// Download GGUF into a temporary .part file, verify exact size & SHA-256, then atomically rename
+export async function downloadGguf(targetPath, options = {}) {
+  const url = options.url ?? GGUF_URL;
+  const expectedSize =
+    options.expectedSize === undefined ? EXPECTED_GGUF_SIZE : options.expectedSize;
+  const expectedSha256 =
+    options.expectedSha256 === undefined ? EXPECTED_GGUF_SHA256 : options.expectedSha256;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const spawnSyncImpl = options.spawnSyncImpl ?? spawnSync;
+  const commandExistsImpl =
+    options.commandExistsImpl ?? (options.fetchImpl ? () => false : commandExists);
+
   const targetDir = path.dirname(targetPath);
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
+  const tempPath = `${targetPath}.part`;
+  fs.rmSync(tempPath, { force: true });
+
   console.log(`\n${c.amber}⚡ Downloading Tejapriyan-8B GGUF weights (~4.7 GB)...${c.reset}`);
-  console.log(`Source: ${c.cyan}${GGUF_URL}${c.reset}`);
+  console.log(`Source: ${c.cyan}${url}${c.reset}`);
   console.log(`Target: ${c.dim}${targetPath}${c.reset}\n`);
 
-  // 1. Try system curl (fastest and shows progress bar)
-  const curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
-  if (commandExists(curlCmd)) {
-    try {
-      console.log(`${c.dim}(Downloading using ${curlCmd} with auto-resume...)${c.reset}\n`);
-      const res = spawnSync(curlCmd, ["-L", "-#", "-C", "-", "-o", targetPath, GGUF_URL], {
-        stdio: "inherit",
-        shell: process.platform === "win32",
-      });
-      if (res.status === 0 && fs.existsSync(targetPath) && fs.statSync(targetPath).size > 1000000000) {
-        console.log(`\n${c.green}✓ Download completed successfully!${c.reset}`);
-        return true;
-      }
-    } catch {
-      // fallback to node stream
-    }
-  }
-
-  // 2. Node.js Native streaming download with progress bar
-  console.log(`${c.dim}(Downloading using native Node.js stream...)${c.reset}\n`);
   try {
-    const res = await fetch(GGUF_URL, { redirect: "follow" });
-    if (!res.ok || !res.body) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    // 1. Try system curl without invoking a shell (uses -f so HTTP errors do not write error pages)
+    const curlCmd = process.platform === "win32" ? "curl.exe" : "curl";
+    if (commandExistsImpl(curlCmd)) {
+      try {
+        console.log(`${c.dim}(Downloading using ${curlCmd}...)${c.reset}\n`);
+        const res = spawnSyncImpl(
+          curlCmd,
+          ["-f", "-L", "-#", "-o", tempPath, url],
+          { stdio: "inherit" }
+        );
+        if (res.status === 0 && fs.existsSync(tempPath)) {
+          process.stdout.write(`${c.dim}Verifying SHA-256 checksum... ${c.reset}`);
+          const check = await verifyFileSha256(tempPath, expectedSha256, expectedSize);
+          if (check.valid) {
+            fs.renameSync(tempPath, targetPath);
+            console.log(`${c.green}verified!${c.reset}`);
+            console.log(`\n${c.green}✓ Download completed and verified!${c.reset}`);
+            return true;
+          }
+          console.log(`${c.red}failed (${check.reason})${c.reset}`);
+        }
+      } catch {
+        // fall back to Node stream below after cleaning partial temp file
+      } finally {
+        if (fs.existsSync(tempPath)) {
+          fs.rmSync(tempPath, { force: true });
+        }
+      }
     }
 
-    const total = Number(res.headers.get("content-length")) || EXPECTED_GGUF_SIZE;
-    let received = 0;
-    let lastPercent = -1;
-    let lastTime = Date.now();
-    let lastBytes = 0;
-    let speedStr = "";
-
-    const fileStream = fs.createWriteStream(targetPath);
-    const reader = res.body.getReader();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fileStream.write(Buffer.from(value));
-      received += value.length;
-
-      const now = Date.now();
-      if (now - lastTime >= 500) {
-        const speedBps = ((received - lastBytes) / (now - lastTime)) * 1000;
-        speedStr = `${(speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
-        lastTime = now;
-        lastBytes = received;
+    // 2. Node.js native streaming download with simultaneous SHA-256 hashing
+    console.log(`${c.dim}(Downloading using native Node.js stream...)${c.reset}\n`);
+    let fileStream = null;
+    try {
+      const res = await fetchImpl(url, { redirect: "follow" });
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
 
-      const percent = Math.floor((received / total) * 100);
-      if (percent !== lastPercent) {
-        lastPercent = percent;
-        const barWidth = 28;
-        const filled = Math.floor((percent / 100) * barWidth);
-        const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
-        const downloadedGb = (received / (1024 * 1024 * 1024)).toFixed(2);
-        const totalGb = (total / (1024 * 1024 * 1024)).toFixed(2);
-        process.stdout.write(
-          `\r${c.cyan}[${bar}] ${c.bold}${percent}%${c.reset} (${downloadedGb}/${totalGb} GB) ${c.amber}${speedStr}${c.reset}   `
+      const total =
+        Number(res.headers?.get?.("content-length")) || expectedSize || 1;
+      let received = 0;
+      let lastPercent = -1;
+      let lastTime = Date.now();
+      let lastBytes = 0;
+      let speedStr = "";
+
+      const hash = crypto.createHash("sha256");
+      fileStream = fs.createWriteStream(tempPath);
+      const streamErrorPromise = new Promise((_, reject) => {
+        fileStream.on("error", reject);
+      });
+      await Promise.race([
+        new Promise((resolve) => fileStream.once("open", resolve)),
+        streamErrorPromise,
+      ]);
+
+      const reader = res.body.getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const buf = Buffer.from(value);
+        hash.update(buf);
+        if (!fileStream.write(buf)) {
+          await Promise.race([
+            new Promise((resolve) => fileStream.once("drain", resolve)),
+            streamErrorPromise,
+          ]);
+        }
+        received += buf.length;
+
+        const now = Date.now();
+        if (now - lastTime >= 500) {
+          const speedBps = ((received - lastBytes) / (now - lastTime)) * 1000;
+          speedStr = `${(speedBps / (1024 * 1024)).toFixed(1)} MB/s`;
+          lastTime = now;
+          lastBytes = received;
+        }
+
+        const percent = Math.min(100, Math.floor((received / total) * 100));
+        if (percent !== lastPercent) {
+          lastPercent = percent;
+          const barWidth = 28;
+          const filled = Math.floor((percent / 100) * barWidth);
+          const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
+          const downloadedGb = (received / (1024 * 1024 * 1024)).toFixed(2);
+          const totalGb = (total / (1024 * 1024 * 1024)).toFixed(2);
+          process.stdout.write(
+            `\r${c.cyan}[${bar}] ${c.bold}${percent}%${c.reset} (${downloadedGb}/${totalGb} GB) ${c.amber}${speedStr}${c.reset}   `
+          );
+        }
+      }
+
+      fileStream.end();
+      await Promise.race([
+        new Promise((resolve) => fileStream.once("finish", resolve)),
+        streamErrorPromise,
+      ]);
+      fileStream = null;
+
+      if (expectedSize != null && received !== expectedSize) {
+        throw new Error(
+          `Downloaded size mismatch (expected ${expectedSize} bytes, got ${received} bytes)`
         );
       }
-    }
 
-    fileStream.end();
-    await new Promise((resolve) => fileStream.on("finish", resolve));
-    console.log(`\n\n${c.green}✓ Download completed successfully!${c.reset}`);
-    return true;
-  } catch (err) {
-    console.error(`\n${c.red}Download failed: ${err.message}${c.reset}`);
-    return false;
+      if (expectedSha256) {
+        const actualSha256 = hash.digest("hex");
+        if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
+          throw new Error(
+            `SHA-256 verification failed (expected ${expectedSha256}, got ${actualSha256})`
+          );
+        }
+      }
+
+      fs.renameSync(tempPath, targetPath);
+      console.log(`\n\n${c.green}✓ Download completed and SHA-256 verified!${c.reset}`);
+      return true;
+    } catch (err) {
+      if (fileStream) {
+        fileStream.on("error", () => {});
+        await new Promise((resolve) => {
+          if (fileStream.closed) {
+            resolve();
+            return;
+          }
+          fileStream.once("close", resolve);
+          fileStream.destroy();
+        });
+      }
+      console.error(`\n${c.red}Download failed: ${err.message}${c.reset}`);
+      return false;
+    }
+  } finally {
+    if (fs.existsSync(tempPath)) {
+      fs.rmSync(tempPath, { force: true });
+    }
   }
 }
 
-// Build model in Ollama using the GGUF file
-async function buildOllamaModel(ggufPath) {
-  console.log(`\n${c.amber}⚡ Building Ollama model '${MODEL_NAME}' from GGUF...${c.reset}`);
-
+export function buildModelfileContent(ggufPath) {
   const normalizedPath = ggufPath.replace(/\\/g, "/");
-  const modelfileContent = `FROM "${normalizedPath}"
+  return `FROM "${normalizedPath}"
 
 TEMPLATE """{{ if .System }}<|im_start|>system
 {{ .System }}<|im_end|>
@@ -218,16 +373,20 @@ PARAMETER temperature 0.6
 PARAMETER top_p 0.9
 PARAMETER num_ctx 8192
 `;
+}
+
+// Build model in Ollama using the GGUF file (without invoking a shell so spaces in paths work safely)
+export async function buildOllamaModel(ggufPath, spawnSyncImpl = spawnSync) {
+  console.log(`\n${c.amber}⚡ Building Ollama model '${MODEL_NAME}' from GGUF...${c.reset}`);
 
   const modelfilePath = path.join(path.dirname(ggufPath), "Modelfile");
-  fs.writeFileSync(modelfilePath, modelfileContent, "utf-8");
+  fs.writeFileSync(modelfilePath, buildModelfileContent(ggufPath), "utf-8");
 
   console.log(`Running: ${c.cyan}ollama create ${MODEL_NAME} -f "${modelfilePath}"${c.reset}\n`);
 
   try {
-    const res = spawnSync("ollama", ["create", MODEL_NAME, "-f", modelfilePath], {
+    const res = spawnSyncImpl("ollama", ["create", MODEL_NAME, "-f", modelfilePath], {
       stdio: "inherit",
-      shell: process.platform === "win32",
     });
 
     if (res.status === 0) {
@@ -243,9 +402,8 @@ PARAMETER num_ctx 8192
   }
 }
 
-// Full automated setup: ensures Ollama, downloads 4.7 GB GGUF, creates model
+// Full automated setup: ensures Ollama, downloads & verifies 4.7 GB GGUF, creates model
 async function ensureModelReady() {
-  // 1. Check if Ollama command exists
   if (!commandExists("ollama")) {
     console.log(`
 ${c.amber}⚠️  Ollama is not installed on this system.${c.reset}
@@ -261,7 +419,6 @@ ${c.bold}macOS / Linux:${c.reset}
     return false;
   }
 
-  // 2. Check if Ollama server is running
   let status = await checkOllamaServer();
   if (!status.online) {
     process.stdout.write(`${c.dim}Starting Ollama local service... ${c.reset}`);
@@ -276,18 +433,27 @@ ${c.bold}macOS / Linux:${c.reset}
     }
   }
 
-  // 3. Check if model already exists in Ollama
   if (status.hasModel) {
     return true;
   }
 
-  // 4. Model not in Ollama: check for GGUF or download it
   console.log(`\n${c.amber}============================================================${c.reset}`);
   console.log(`  ${c.bold}TEJAPRIYAN AI MODEL (8B) - AUTOMATED SETUP${c.reset}`);
   console.log(`  The model weights (4.7 GB) need to be downloaded to your PC.`);
   console.log(`${c.amber}============================================================${c.reset}\n`);
 
   let ggufPath = findExistingGguf();
+  if (ggufPath) {
+    process.stdout.write(`${c.dim}Verifying existing GGUF checksum... ${c.reset}`);
+    const verified = await verifyFileSha256(ggufPath);
+    if (!verified.valid) {
+      console.log(`${c.red}mismatch (${verified.reason})${c.reset}`);
+      ggufPath = null;
+    } else {
+      console.log(`${c.green}verified!${c.reset}`);
+    }
+  }
+
   if (!ggufPath) {
     const targetGguf = path.join(CACHE_DIR, GGUF_FILENAME);
     const downloaded = await downloadGguf(targetGguf);
@@ -296,21 +462,56 @@ ${c.bold}macOS / Linux:${c.reset}
     }
     ggufPath = targetGguf;
   } else {
-    console.log(`${c.green}✓ Found existing GGUF weights at:${c.reset} ${c.dim}${ggufPath}${c.reset}`);
+    console.log(`${c.green}✓ Using verified GGUF weights at:${c.reset} ${c.dim}${ggufPath}${c.reset}`);
   }
 
-  // 5. Build model in Ollama
   const built = await buildOllamaModel(ggufPath);
   if (!built) return false;
 
-  // 6. Verify model is active
   status = await checkOllamaServer();
   return status.hasModel;
 }
 
+export async function consumeNdjsonStream(body, onChunk) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const json = JSON.parse(trimmed);
+      if (json.message && json.message.content) {
+        onChunk(json.message.content);
+      }
+    } catch {
+      // Ignore malformed/partial JSON line
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      handleLine(line);
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    for (const line of buffer.split("\n")) {
+      handleLine(line);
+    }
+  }
+}
+
 // Stream answer from Ollama model
-async function streamFromOllama(messages, onChunk) {
-  const res = await fetch("http://localhost:11434/api/chat", {
+export async function streamFromOllama(messages, onChunk, fetchImpl = fetch) {
+  const res = await fetchImpl("http://localhost:11434/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -333,36 +534,17 @@ When asked for SQL queries, explain the reasoning first, then provide the SQL qu
     throw new Error(`Ollama HTTP ${res.status}: ${res.statusText}`);
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const json = JSON.parse(line);
-        if (json.message && json.message.content) {
-          onChunk(json.message.content);
-        }
-      } catch {
-        // continue
-      }
-    }
-  }
+  await consumeNdjsonStream(res.body, onChunk);
 }
 
 // Built-in intelligent responder as fallback
-function solveOffline(input) {
+export function solveOffline(input) {
   const q = input.trim();
   const lower = q.toLowerCase();
 
-  const pctMatch = lower.match(/(?:what(?:'s| is)?\s*)?(\d+(?:\.\d+)?)\s*(?:%|percent)\s*(?:of)?\s*(\d+(?:\.\d+)?)/i);
+  const pctMatch = lower.match(
+    /(?:what(?:'s| is)?\s*)?(\d+(?:\.\d+)?)\s*(?:%|percent)\s*(?:of)?\s*(\d+(?:\.\d+)?)/i
+  );
   if (pctMatch) {
     const pct = parseFloat(pctMatch[1]);
     const total = parseFloat(pctMatch[2]);
@@ -397,6 +579,43 @@ async function typeWriter(text) {
   process.stdout.write("\n\n");
 }
 
+export function resolveLocalViteBin(rootDir = ROOT_DIR) {
+  const candidate = path.join(rootDir, "node_modules", "vite", "bin", "vite.js");
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+export function getWebDashboardGuidance() {
+  return `
+${c.amber}⚠️  Local web dashboard ('vite') is not installed in this npx/global package.${c.reset}
+\`vite\` is a development dependency and is not included when running via \`npx tejapriyan --web\`.
+
+${c.bold}Open the live web dashboard directly:${c.reset}
+  ${c.cyan}https://tejapriyan-ai-model.vercel.app${c.reset}
+  ${c.dim}(Mirror: https://tejapriyan.github.io/tejapriyan-ai-model/)${c.reset}
+
+${c.bold}Or run the web dashboard locally from source:${c.reset}
+  ${c.cyan}git clone https://github.com/TejaPriyan/tejapriyan-ai-model.git${c.reset}
+  ${c.cyan}cd tejapriyan-ai-model && npm install && npm run dev${c.reset}
+`;
+}
+
+export function launchWebDashboard({
+  rootDir = ROOT_DIR,
+  spawnImpl = spawn,
+  execPath = process.execPath,
+} = {}) {
+  const viteBin = resolveLocalViteBin(rootDir);
+  if (!viteBin) {
+    console.log(getWebDashboardGuidance());
+    return { launched: false, child: null };
+  }
+  const child = spawnImpl(execPath, [viteBin], {
+    cwd: rootDir,
+    stdio: "inherit",
+  });
+  return { launched: true, child };
+}
+
 // Banner
 function printBanner(isRealModelActive) {
   console.log(`
@@ -419,9 +638,7 @@ ${c.amber}  _____ ___   _   _   ___ ___ _____   ___   _  _     _   ___
 }
 
 // Main function
-async function main() {
-  const args = process.argv.slice(2);
-
+export async function main(args = process.argv.slice(2)) {
   if (args.includes("-h") || args.includes("--help")) {
     console.log(`
 Tejapriyan AI ⚡ CLI
@@ -429,25 +646,27 @@ Usage:
   npx tejapriyan              Start live AI chat (auto-downloads 8B model if needed)
   npx tejapriyan "your query" Ask any question directly to the model
   npx tejapriyan --setup      Download weights and set up the model in Ollama
-  npx tejapriyan --web        Launch the local web dashboard
+  npx tejapriyan --web        Launch the local web dashboard (from a cloned source repo)
   npx tejapriyan --version    Show version
     `);
     process.exit(0);
   }
 
   if (args.includes("-v") || args.includes("--version")) {
-    console.log("tejapriyan version 1.0.0");
+    console.log(`tejapriyan version ${getPackageVersion()}`);
     process.exit(0);
   }
 
   if (args.includes("--setup")) {
-    await ensureModelReady();
-    process.exit(0);
+    const ok = await ensureModelReady();
+    process.exit(ok ? 0 : 1);
   }
 
   if (args.includes("--web")) {
-    const cmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    spawn(cmd, ["run", "dev"], { cwd: ROOT_DIR, stdio: "inherit", shell: true });
+    const { launched } = launchWebDashboard();
+    if (!launched) {
+      process.exit(1);
+    }
     return;
   }
 
@@ -513,10 +732,17 @@ Usage:
       return;
     }
 
+    if (input === "/web") {
+      launchWebDashboard();
+      rl.prompt();
+      return;
+    }
+
     if (input === "/help") {
       console.log(`
 ${c.bold}Available Commands:${c.reset}
   ${c.cyan}/setup${c.reset}   Verify or re-download 8B model weights in Ollama
+  ${c.cyan}/web${c.reset}     Launch the local web dashboard (if vite is installed)
   ${c.cyan}/clear${c.reset}   Clear terminal chat
   ${c.cyan}/help${c.reset}    Show this help
   ${c.cyan}/exit${c.reset}    Exit chat
@@ -560,4 +786,15 @@ ${c.bold}Available Commands:${c.reset}
   });
 }
 
-main();
+const isEntryPoint = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(__filename);
+  } catch {
+    return path.resolve(process.argv[1]) === path.resolve(__filename);
+  }
+})();
+
+if (isEntryPoint) {
+  main();
+}
